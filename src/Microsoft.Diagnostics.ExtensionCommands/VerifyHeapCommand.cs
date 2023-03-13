@@ -141,9 +141,14 @@ namespace Microsoft.Diagnostics.ExtensionCommands
 
         private void WriteError(ref TableOutput output, ClrHeap heap, ObjectCorruption corruption)
         {
-            ClrObject obj = corruption.Object;
+            string message = GetObjectCorruptionMessage(MemoryService, heap, corruption);
+            WriteRow(ref output, heap, corruption, message);
+        }
 
-            string message = corruption.Kind switch
+        public static string GetObjectCorruptionMessage(IMemoryService memory, ClrHeap heap, ObjectCorruption corruption)
+        {
+            ClrObject obj = corruption.Object;
+            return corruption.Kind switch
             {
                 // odd failures
                 ObjectCorruptionKind.ObjectNotOnTheHeap => $"Tried to validate {obj.Address:x} but its address was not on any segment.",
@@ -151,26 +156,24 @@ namespace Microsoft.Diagnostics.ExtensionCommands
 
                 // Object failures
                 ObjectCorruptionKind.ObjectTooLarge => $"Object {obj.Address:x} is too large, size={obj.Size:x}, segmentEnd: {ValueWithError(heap.GetSegmentByAddress(obj)?.End)}",
-                ObjectCorruptionKind.InvalidMethodTable => $"Object {obj.Address:x} has an invalid method table {ReadPointerWithError(obj):x}",
+                ObjectCorruptionKind.InvalidMethodTable => $"Object {obj.Address:x} has an invalid method table {ReadPointerWithError(memory, obj):x}",
                 ObjectCorruptionKind.InvalidThinlock => $"Object {obj.Address:x} has an invalid thin lock",
                 ObjectCorruptionKind.SyncBlockMismatch => GetSyncBlockFailureMessage(corruption),
                 ObjectCorruptionKind.SyncBlockZero => GetSyncBlockFailureMessage(corruption),
 
                 // Object reference failures
                 ObjectCorruptionKind.ObjectReferenceNotPointerAligned => $"Object {obj.Address:x} has an unaligned member at {corruption.Offset:x}: is not pointer aligned",
-                ObjectCorruptionKind.InvalidObjectReference => $"Object {obj.Address:x} has a bad member at offset {corruption.Offset:x}: {ReadPointerWithError(obj + (uint)corruption.Offset)}",
-                ObjectCorruptionKind.FreeObjectReference => $"Object {obj.Address:x} contains free object at offset {corruption.Offset:x}: {ReadPointerWithError(obj + (uint)corruption.Offset)}",
+                ObjectCorruptionKind.InvalidObjectReference => $"Object {obj.Address:x} has a bad member at offset {corruption.Offset:x}: {ReadPointerWithError(memory, obj + (uint)corruption.Offset)}",
+                ObjectCorruptionKind.FreeObjectReference => $"Object {obj.Address:x} contains free object at offset {corruption.Offset:x}: {ReadPointerWithError(memory, obj + (uint)corruption.Offset)}",
 
                 // Memory read failures
-                ObjectCorruptionKind.CouldNotReadObject => $"Could not read object {obj.Address:x} at offset {corruption.Offset:x}: {ReadPointerWithError(obj + (uint)corruption.Offset)}",
+                ObjectCorruptionKind.CouldNotReadObject => $"Could not read object {obj.Address:x} at offset {corruption.Offset:x}: {ReadPointerWithError(memory, obj + (uint)corruption.Offset)}",
                 ObjectCorruptionKind.CouldNotReadMethodTable => $"Could not read method table for Object {obj.Address:x}",
                 ObjectCorruptionKind.CouldNotReadCardTable => $"Could not verify object {obj.Address:x}: could not read card table",
                 ObjectCorruptionKind.CouldNotReadGCDesc => $"Could not verify object {obj.Address:x}: could not read GCDesc",
 
                 _ => ""
             };
-
-            WriteRow(ref output, heap, corruption, message);
         }
 
         private void WriteRow(ref TableOutput output, ClrHeap heap, ObjectCorruption corruption, string message)
@@ -270,9 +273,9 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             return error;
         }
 
-        private string ReadPointerWithError(ulong address)
+        private static string ReadPointerWithError(IMemoryService memory, ulong address)
         {
-            if (MemoryService.ReadPointer(address, out ulong value))
+            if (memory.ReadPointer(address, out ulong value))
             {
                 return value.ToString("x");
             }
