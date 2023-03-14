@@ -241,6 +241,14 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             }
         }
 
+        public sealed class DmlListNearObj : DmlExec
+        {
+            public DmlListNearObj(ulong address)
+                : base(address, address != 0 ? $"!sos listnearobj {address:x}" : "")
+            {
+            }
+        }
+
         public sealed class DmlVerifyObj : DmlExec
         {
             public DmlVerifyObj(ulong address)
@@ -249,12 +257,16 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             }
         }
 
-        public sealed class DmlDumpHeapMT : DmlExec
+        public sealed class DmlDumpHeap : DmlExec
         {
-            public DmlDumpHeapMT(ulong methodTable)
+            public DmlDumpHeap(string text, MemoryRange range)
+                : base(text, $"!dumpheap {range.Start:x} {range.End:x}")
+            {
+            }
+
+            public DmlDumpHeap(ulong methodTable)
                 : base (methodTable, methodTable != 0 ? $"!dumpheap -mt {methodTable:x}" : "")
             {
-
             }
         }
 
