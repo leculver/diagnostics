@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using Microsoft.Diagnostics.DebugServices;
@@ -32,8 +33,6 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             // Align objAddress
             objAddress &= ~((ulong)MemoryService.PointerSize - 1);
 
-            bool localConsistency = true;
-            bool isLastObject = false;
 
             ClrHeap heap = Runtime.Heap;
             ClrSegment segment = heap.GetSegmentByAddress(objAddress);
@@ -43,144 +42,182 @@ namespace Microsoft.Diagnostics.ExtensionCommands
                 return;
             }
 
-            // If we have allocation contexts in the target memory range, expand the pointer size column
+            if (segment.ObjectRange.Length == 0)
+            {
+                Console.WriteLine($"Segment {segment.Address:x} has no objects.");
+                return;
+            }
+
+            // If we might have allocation contexts in the target memory range, expand the pointer size column
             // so that we can print the allocation context range.
             MemoryRange[] segAllocContexts = heap.EnumerateAllocationContexts().Where(context => segment.ObjectRange.Contains(context.Start)).ToArray();
-            int pointerColumnWidth = segAllocContexts.Length > 0 ? 33 : 16;
+            int pointerColumnWidth = segAllocContexts.Length > 0 ? Math.Max(segAllocContexts.Max(r => FormatRange(r).Length), 16) : 16;
 
-            TableOutput output = new(Console, (-"Current:".Length, ""), (pointerColumnWidth, "x16"), (20, ""), (0, ""));
+            TableOutput output = new(Console, (-"Expected:".Length, ""), (pointerColumnWidth, "x16"), (20, ""), (0, ""));
 
-            ClrObject prev = heap.FindPreviousObjectOnSegment(objAddress, carefully: true);
+            // Get current object, but objAddress may not point to an object.
             ClrObject curr = heap.GetObject(objAddress);
-            if (prev.Address == 0)
+
+            bool localConsistency = true;
+            bool foundLastObject = false;
+            ulong expectedNextObject;
+
+            // Previous object
+            ClrObject prev = default;
+            if (objAddress > segment.FirstObjectAddress)
             {
-                if (segment.FirstObjectAddress == objAddress)
+                // FindPreviousObjectOnSegment may fail if objAddress is not within ObjectRange
+                if (segment.ObjectRange.End <= objAddress)
                 {
-
-                    Console.WriteLine($"Object {objAddress:x} is the first object on segment {segment.Address:x}.");
-                    localConsistency = VerifyAndPrintObject(output, "Current:", heap, curr) && localConsistency;
-
-                    ulong expectedNextObj = Align(curr + curr.Size, segment);
-                    MemoryRange allocContextPlusGap = PrintGap(output, segment, segAllocContexts, new(curr, expectedNextObj));
-                    if (allocContextPlusGap.End != 0)
-                    {
-                        expectedNextObj = allocContextPlusGap.End;
-                    }
-
-                    if (!segment.ObjectRange.Contains(expectedNextObj))
-                    {
-                        isLastObject = true;
-                    }
+                    prev = heap.FindPreviousObjectOnSegment(segment.ObjectRange.End - 1, carefully: true);
                 }
                 else
                 {
-                    // This shouldn't happen, we should always find a previous object since we know objAddress
-                    // isn't the first object.  Just in case, print out an error message:
-                    Console.WriteLine($"Before: couldn't find any object between {segment.FirstObjectAddress:x} and {objAddress:x}");
-
-                    localConsistency = false;
+                    prev = heap.FindPreviousObjectOnSegment(objAddress, carefully: true);
                 }
+
+                Debug.Assert(prev < objAddress); // also works if there's no previous object, Address == 0
+                localConsistency = VerifyAndPrintObject(output, "Before:", heap, prev) && localConsistency;
+
+                if (prev.IsValid)
+                {
+                    expectedNextObject = Align(prev + prev.Size, segment);
+                }
+                else
+                {
+                    localConsistency = false;
+                    expectedNextObject = heap.FindNextObjectOnSegment(prev, carefully: true);
+                }
+
+                // Check for an allocation context
+                MemoryRange allocContextPlusGap = PrintGapIfExists(output, segment, segAllocContexts, new(prev, expectedNextObject));
+                if (allocContextPlusGap.End != 0)
+                {
+                    Debug.Assert(expectedNextObject < allocContextPlusGap.End);
+                    expectedNextObject = allocContextPlusGap.End;
+                }
+
+                if (allocContextPlusGap.Contains(objAddress) && curr.IsValid)
+                {
+                    // The address we were given lives in an allocation context AND it has a valid method table.
+                    // It's likely that this is just an inconsistent/transitional state of the heap.  IE the GC
+                    // has started to allocate objAddress and we got a stale alloc context.
+                    Console.WriteLine($"Address {objAddress:x} has a valid method table inside of an allocation context.");
+                }
+
+                // Is prev the end of the segment?
+                CheckEndOfSegment(segment, expectedNextObject, prev, ref localConsistency, ref foundLastObject);
+            }
+            else if (objAddress < segment.FirstObjectAddress)
+            {
+                Console.WriteLine($"Address {objAddress:x} is before the first object on the segment.");
+                expectedNextObject = segment.FirstObjectAddress;
             }
             else
             {
-                if (curr.IsValid)
-                {
-                    // objAddress directly points at an object, print normal output:
-                    localConsistency = VerifyAndPrintObject(output, "Before:", heap, prev) && localConsistency;
-                    PrintGap(output, segment, segAllocContexts, new(prev, curr));
-                    localConsistency = VerifyAndPrintObject(output, "Current:", heap, curr) && localConsistency;
+                Console.WriteLine($"Address {objAddress:x} is the first object on the segment.");
+                expectedNextObject = segment.FirstObjectAddress;
+            }
 
-                    ulong expectedNextObj = Align(curr + curr.Size, segment);
-                    MemoryRange allocContextPlusGap = PrintGap(output, segment, segAllocContexts, new(curr, expectedNextObj));
+            if (!foundLastObject)
+            {
+                // Very odd case that shouldn't happen often:
+                if (expectedNextObject < objAddress && segment.ObjectRange.Contains(expectedNextObject))
+                {
+                    // If we are here, then seg.FindPreviousObjectOnSegment(objAddress) skipped expectedNextObject,
+                    // probably due to corruption.
+                    localConsistency = false;
+
+                    ClrObject expected = heap.GetObject(expectedNextObject);
+                    VerifyAndPrintObject(output, "Expected:", heap, expected);
+                    MemoryRange allocContextPlusGap = PrintGapIfExists(output, segment, segAllocContexts, new(expectedNextObject, objAddress));
+
                     if (allocContextPlusGap.End != 0)
                     {
-                        expectedNextObj = allocContextPlusGap.End;
-                    }
-
-                    if (!segment.ObjectRange.Contains(expectedNextObj))
-                    {
-                        isLastObject = true;
-                    }
-                }
-                else
-                {
-                    // Find the object after prev and see if we have a corrupted object, or of objAddress simply
-                    // was simply in the middle of an object or allocation context:
-
-                    ClrObject expectedNext = heap.FindNextObjectOnSegment(prev);
-                    if (expectedNext == objAddress)
-                    {
-                        // Ok, the current address isn't a valid object, but it SHOULD be.  Normal output
-                        // will print the error:
-                        VerifyAndPrintObject(output, "Before:", heap, prev);
-                        PrintGap(output, segment, segAllocContexts, new(prev, curr));
-                        VerifyAndPrintObject(output, "Current:", heap, curr);
-
-                        localConsistency = false;
-                    }
-                    else if (expectedNext > objAddress)
-                    {
-                        // objAddress was in the middle of an object (or an allocation context).  We simply
-                        // won't print "Current:" in this case.
-                        localConsistency = VerifyAndPrintObject(output, "Before:", heap, prev) && localConsistency;
-                    }
-                    else if (expectedNext == 0)
-                    {
-                        // Couldn't find a next object on the segment, this is the last object.
-                        VerifyAndPrintObject(output, "Before:", heap, prev);
-                        MemoryRange allocContextPlusGap = PrintGap(output, segment, segAllocContexts, new(prev, curr));
-                        if (allocContextPlusGap.Contains(objAddress) || !segment.ObjectRange.Contains(objAddress))
-                        {
-                            // objAdress is either in the allocationContext, or the sliver of memory between the
-                            // end and the next valid address, or we are past the allocated region.  Nothing
-                            // to do here.
-                            isLastObject = true;
-                        }
-                        else
-                        {
-                            // We somehow couldn't walk past prev, and this address should be in allocated bounds
-                            // of the segment, print it out and mark consistency false:
-                            VerifyAndPrintObject(output, "Current:", heap, curr);
-                            localConsistency = false;
-                        }
+                        // Whew, we found an allocation context.  We know where to start again:
+                        Debug.Assert(expectedNextObject < allocContextPlusGap.End);
+                        expectedNextObject = allocContextPlusGap.End;
                     }
                     else
                     {
-                        // ClrMD somehow returned that there exists an object between the previous object and this
-                        // object at the same time.  We'll print the current and previous object here for diagnostics,
-                        // but this should never happen
-
-                        VerifyAndPrintObject(output, "Before:", heap, prev);
-                        PrintGap(output, segment, segAllocContexts, new(prev, expectedNext));
-                        VerifyAndPrintObject(output, "???", heap, expectedNext);
-                        PrintGap(output, segment, segAllocContexts, new(expectedNext, curr));
-                        VerifyAndPrintObject(output, "Current:", heap, curr);
+                        // We don't know where to start next.  If curr is a valid object, use that, if not, try to
+                        // move past "expected", if that doesn't work...give up.
+                        if (curr.IsValid)
+                        {
+                            expectedNextObject = curr;
+                        }
+                        else
+                        {
+                            ClrObject maybeNextObject = heap.FindNextObjectOnSegment(curr + 1, carefully: true);
+                            if (maybeNextObject.IsValid)
+                            {
+                                expected = maybeNextObject;
+                            }
+                            else
+                            {
+                                // Well we can't walk past expected, so this is the end
+                                expectedNextObject = segment.ObjectRange.End;
+                            }
+                        }
                     }
+
+                    // Is expected the end of the segment?
+                    CheckEndOfSegment(segment, expectedNextObject, expected, ref localConsistency, ref foundLastObject);
                 }
             }
 
-            ClrObject next = heap.FindNextObjectOnSegment(objAddress, carefully: true);
-            if (!segment.ObjectRange.Contains(objAddress))
+            // No matter what, print curr if it's valid
+            if (curr.IsValid)
             {
-                Console.WriteLine($"Object {objAddress:x} is outside of the allocated range ({segment.ObjectRange.Start:x}-{segment.ObjectRange.End:x}) on segment {segment.Address:x}.");
-            }
-            else if (next.Address == 0)
-            {
-                if (isLastObject)
+                if (segment.ObjectRange.Contains(curr))
                 {
-                    Console.WriteLine($"No objects at or after {objAddress:x} on segment {segment.Address:x}");
+                    localConsistency = VerifyAndPrintObject(output, "Current:", heap, curr) && localConsistency;
+
+                    // If curr is valid, we need to print and skip the allocation context
+                    expectedNextObject = Align(curr + curr.Size, segment);
+                    MemoryRange allocContextPlusGap = PrintGapIfExists(output, segment, segAllocContexts, new(curr, expectedNextObject));
+                    if (allocContextPlusGap.End != 0)
+                    {
+                        Debug.Assert(expectedNextObject <= allocContextPlusGap.End);
+                        expectedNextObject = allocContextPlusGap.End;
+                    }
+
+                    // Is expected the end of the segment?
+                    CheckEndOfSegment(segment, expectedNextObject, curr, ref localConsistency, ref foundLastObject);
                 }
                 else
                 {
-                    Console.WriteLine($"After:  couldn't find any object between {objAddress:x} and {segment.ObjectRange.End:x}");
-                    localConsistency = false;
+                    // If this value lives outside of the object range, it doesn't affect local consistency.  If
+                    // we are here, then we are likely looking at a recently collected object on a compacted segment
+                    // which hasn't been zeroed yet.
+                    Console.WriteLineError($"Object {objAddress:x} is not in the allocated range of the segment, it may have been collected but not zeroed.");
+                    VerifyAndPrintObject(output, "Current:", heap, curr);
+
+                    foundLastObject = true;
                 }
             }
-            else
+
+            if (!foundLastObject)
             {
-                // VerifyAndPrintObject will handle if next isn't valid
-                PrintGap(output, segment, segAllocContexts, new(objAddress, next));
-                localConsistency = VerifyAndPrintObject(output, "After:", heap, next) && localConsistency;
+                // Determine "Next:" object
+                ClrObject next = heap.FindNextObjectOnSegment(objAddress, carefully: true);
+                if (next.IsValid)
+                {
+                    localConsistency = VerifyAndPrintObject(output, "Next:", heap, next) && localConsistency;
+                    if (next != expectedNextObject)
+                    {
+                        localConsistency = false;
+                        Console.WriteLine($"Expected to find next object at {expectedNextObject:x}, instead found it at {next.Address:x}.");
+                    }
+
+                    // Is expected the end of the segment?
+                    CheckEndOfSegment(segment, expectedNextObject, curr, ref localConsistency, ref foundLastObject);
+                }
+                else
+                {
+                    localConsistency = false;
+                    Console.WriteLine($"Could not find object after {objAddress:x}");
+                }
             }
 
             if (localConsistency)
@@ -193,13 +230,28 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             }
         }
 
-        private MemoryRange PrintGap(TableOutput output, ClrSegment segment, MemoryRange[] segAllocContexts, MemoryRange objectDistance)
+        private void CheckEndOfSegment(ClrSegment segment, ulong expectedNextObject, ulong prevObjectAddress, ref bool localConsistency, ref bool foundLastObject)
+        {
+            if (!segment.ObjectRange.Contains(expectedNextObject) && !foundLastObject)
+            {
+                Console.WriteLineError($"{prevObjectAddress:x} is the last object on the segment");
+                if (expectedNextObject != segment.ObjectRange.End)
+                {
+                    Console.WriteLine($"Error: Expected allocated end at {expectedNextObject:x}, but instead was at {segment.ObjectRange.End:x}");
+                    localConsistency = false;
+                }
+
+                foundLastObject = true;
+            }
+        }
+
+        private MemoryRange PrintGapIfExists(TableOutput output, ClrSegment segment, MemoryRange[] segAllocContexts, MemoryRange objectDistance)
         {
             // Print information about allocation context gaps between objects
-            MemoryRange range = segAllocContexts.FirstOrDefault(ctx => objectDistance.Overlaps(ctx));
+            MemoryRange range = segAllocContexts.FirstOrDefault(ctx => objectDistance.Overlaps(ctx) || ctx.Contains(objectDistance.End));
             if (range.Start != 0)
             {
-                output.WriteRow("Gap:", $"{range.Start:x}-{range.End:x}", FormatSize(range.Length), "GC Allocation Context (expected gap in the heap)");
+                output.WriteRow("Gap:", FormatRange(range), FormatSize(range.Length), "GC Allocation Context (expected gap in the heap)");
             }
 
             // Return the region of memory that does not contain objects.  CLR stores allocation contexts with an ending
@@ -214,12 +266,14 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             return new(range.Start, range.End + Align(minObjectSize, segment));
         }
 
-        private static ulong Align(ulong size, ClrSegment seg)
+        private static string FormatRange(MemoryRange range) => $"{range.Start:x}-{range.End:x}";
+
+        private ulong Align(ulong size, ClrSegment seg)
         {
             ulong AlignConst;
             ulong AlignLargeConst = 7;
 
-            if (IntPtr.Size == 4)
+            if (MemoryService.PointerSize == 4)
             {
                 AlignConst = 3;
             }
