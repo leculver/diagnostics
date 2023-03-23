@@ -16,8 +16,8 @@ namespace Microsoft.Diagnostics.ExtensionCommands
     [ServiceExport(Scope = ServiceScope.Runtime)]
     public class RootCacheService
     {
-        private List<(ulong Source, ulong Target)> _dependentHandles;
-        private ReadOnlyCollection<ClrRoot> _handleRoots;
+        private List<(ulong Source, ulong Target)> _dependentHandles = new();
+        private ReadOnlyCollection<ClrRoot> _handleRoots = new List<ClrRoot>().AsReadOnly();
         private ReadOnlyCollection<ClrRoot> _finalizerRoots;
         private ReadOnlyCollection<ClrRoot> _stackRoots;
         private bool _printedWarning;
