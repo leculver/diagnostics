@@ -19,7 +19,7 @@ namespace Microsoft.Diagnostics.ExtensionCommands
         private List<(ulong Source, ulong Target)> _dependentHandles = new();
         private ReadOnlyCollection<ClrRoot> _handleRoots = new List<ClrRoot>().AsReadOnly();
         private ReadOnlyCollection<ClrRoot> _finalizerRoots;
-        private ReadOnlyCollection<ClrRoot> _stackRoots;
+        private ReadOnlyCollection<ClrRoot> _stackRoots = new List<ClrRoot>().AsReadOnly();
         private bool _printedWarning;
         private bool _printedStackWarning;
 
