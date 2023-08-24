@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net48</TargetFramework>
+    <Optimize>False</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
