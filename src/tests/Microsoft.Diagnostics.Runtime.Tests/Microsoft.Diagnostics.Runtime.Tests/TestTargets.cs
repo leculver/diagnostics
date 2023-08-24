@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -121,7 +122,7 @@ namespace Microsoft.Diagnostics.Runtime.Tests
             string path = BuildDumpName(gc, full);
             if (!File.Exists(path))
             {
-                CreateDumpFile(gc);
+                CreateDumpFile(gc, full);
                 Assert.True(File.Exists(path));
             }
 
@@ -137,28 +138,53 @@ namespace Microsoft.Diagnostics.Runtime.Tests
             }
         }
 
-        private void CreateDumpFile(GCMode gc)
+        private void CreateDumpFile(GCMode gc, bool full)
         {
-            DebuggerStartInfo info = new();
-            if (gc == GCMode.Server)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                info.SetEnvironmentVariable("COMPlus_BuildFlavor", "SVR");
-                info.SetEnvironmentVariable("DOTNET_gcServer", "1");
-            }
-
-            using Debugger debugger = info.LaunchProcess(Executable, Path.GetDirectoryName(Executable));
-            debugger.OnException += (debugger, exception, firstChance) => {
-                if (!firstChance && exception.ExceptionCode == (uint)ExceptionTypes.Clr)
+                DebuggerStartInfo info = new();
+                if (gc == GCMode.Server)
                 {
-                    string fullDumpPath = BuildDumpName(gc, full: true);
-                    _ = debugger.WriteDumpFile(fullDumpPath, DEBUG_DUMP.DEFAULT);
-
-                    string miniDumpPath = BuildDumpName(gc, full: false);
-                    _ = debugger.WriteDumpFile(miniDumpPath, DEBUG_DUMP.SMALL);
+                    info.SetEnvironmentVariable("COMPlus_BuildFlavor", "SVR");
+                    info.SetEnvironmentVariable("DOTNET_gcServer", "1");
                 }
-            };
 
-            debugger.RunUntilExit();
+                using Debugger debugger = info.LaunchProcess(Executable, Path.GetDirectoryName(Executable));
+                debugger.OnException += (debugger, exception, firstChance) => {
+                    if (!firstChance && exception.ExceptionCode == (uint)ExceptionTypes.Clr)
+                    {
+                        string fullDumpPath = BuildDumpName(gc, full: true);
+                        _ = debugger.WriteDumpFile(fullDumpPath, DEBUG_DUMP.DEFAULT);
+
+                        string miniDumpPath = BuildDumpName(gc, full: false);
+                        _ = debugger.WriteDumpFile(miniDumpPath, DEBUG_DUMP.SMALL);
+                    }
+                };
+
+                debugger.RunUntilExit();
+            }
+            else
+            {
+                ProcessStartInfo startInfo = new()
+                {
+                    FileName = Executable,
+                };
+                
+                if (gc == GCMode.Server)
+                    startInfo.Environment["DOTNET_gcServer"] = "1";
+
+                startInfo.Environment["DOTNET_DbgEnableMiniDump"] = "1";
+                startInfo.Environment["DOTNET_DbgMiniDumpName"] = BuildDumpName(gc, full);
+
+                if (full)
+                    startInfo.Environment["DOTNET_DbgMiniDumpType"] = "2";
+                else
+                    startInfo.Environment["DOTNET_DbgMiniDumpType"] = "1";
+
+                using Process process = new() { StartInfo = startInfo };
+                process.Start();
+                process.WaitForExit();
+            }
         }
 
         public string BuildDumpName(GCMode gcmode, bool full)
@@ -175,14 +201,16 @@ namespace Microsoft.Diagnostics.Runtime.Tests
 
         public DataTarget LoadFullDump(GCMode gc = GCMode.Workstation) => LoadDump(gc, true);
 
-        [SupportedOSPlatform("windows")]
         public DataTarget LoadFullDumpWithDbgEng(GCMode gc = GCMode.Workstation)
         {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                throw new NotSupportedException();
+
             string dumpPath = BuildDumpName(gc, true);
             if (!File.Exists(dumpPath))
-                CreateDumpFile(gc);
+                CreateDumpFile(gc, true);
 
-            Utilities.DbgEng.DbgEngIDataReader dbgengReader = new(dumpPath);
+            DbgEngIDataReader dbgengReader = new(dumpPath);
             return new DataTarget(new CustomDataTarget(dbgengReader));
         }
     }
