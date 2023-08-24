@@ -118,8 +118,7 @@ namespace Microsoft.Diagnostics.Runtime.Tests
             using ClrRuntime runtime = dataTarget.ClrVersions.Single().CreateRuntime();
             ClrHeap heap = runtime.Heap;
 
-            ClrModule module = heap.Runtime.GetMainModule();
-            ClrType mainType = module.GetTypeByName("GCRootTarget");
+            ClrType mainType = heap.Runtime.GetTypeByName("GCRootTarget");
 
             ClrObject obj = mainType.GetStaticObjectValue("TheRoot");
             obj = obj.ReadObjectField("Item1");
@@ -189,8 +188,7 @@ namespace Microsoft.Diagnostics.Runtime.Tests
 
         private static void GetKnownSourceAndTarget(ClrHeap heap, out ulong source, out ulong target)
         {
-            ClrModule module = heap.Runtime.GetMainModule();
-            ClrType mainType = module.GetTypeByName("GCRootTarget");
+            ClrType mainType = heap.Runtime.GetTypeByName("GCRootTarget");
 
             source = mainType.GetStaticObjectValue("TheRoot").Address;
             target = heap.GetObjectsOfType("TargetType").Single();

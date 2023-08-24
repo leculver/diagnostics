@@ -15,5 +15,6 @@ namespace Microsoft.Diagnostics.Runtime.Tests
                 Skip = "Only supported on Windows";
             }
         }
+
     }
 }

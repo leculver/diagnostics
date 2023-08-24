@@ -4,10 +4,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using Microsoft.Diagnostics.Runtime.Utilities.DbgEng;
 
-namespace Microsoft.Diagnostics.Runtime.Tests.Tasks
+namespace Microsoft.Diagnostics.Runtime.Tests
 {
     internal enum ExceptionTypes : uint
     {
@@ -108,6 +109,15 @@ namespace Microsoft.Diagnostics.Runtime.Tests.Tasks
                 throw new Exception(GetExceptionString("IDebugControl::WaitForEvent", hr));
 
             return GetDebugStatus();
+        }
+
+        public void RunUntilExit()
+        {
+            DEBUG_STATUS status;
+            do
+            {
+                status = ProcessEvents(TimeSpan.MaxValue);
+            } while (status != DEBUG_STATUS.NO_DEBUGGEE);
         }
 
         public void TerminateProcess()

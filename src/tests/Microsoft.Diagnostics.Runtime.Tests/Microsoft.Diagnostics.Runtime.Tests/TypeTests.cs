@@ -16,9 +16,9 @@ namespace Microsoft.Diagnostics.Runtime.Tests
 {
     public class TypeTests
     {
-        public static readonly string ModuleName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "types.exe" : "types.dll";
+        public static readonly string ModuleName = "types.dll";
 
-        public static readonly string NestedTypesModuleName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "NestedTypes.exe" : "NestedTypes.dll";
+        public static readonly string NestedTypesModuleName = "NestedTypes.dll";
 
         [Fact]
         public void TestTypeModifiers()

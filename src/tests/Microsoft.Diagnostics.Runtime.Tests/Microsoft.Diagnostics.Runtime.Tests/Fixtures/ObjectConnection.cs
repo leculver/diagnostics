@@ -43,7 +43,7 @@ namespace Microsoft.Diagnostics.Runtime.Tests.Fixtures
             ClrObject obj = heap.EnumerateObjects().FirstOrDefault(o => o.Type.Name == typeName);
 
             if (obj.IsNull)
-                throw new InvalidOperationException($"Could not find {typeName} in {TestTarget.Source} source.");
+                throw new InvalidOperationException($"Could not find {typeName} in {TestTarget.Name}.");
 
             return obj;
         }

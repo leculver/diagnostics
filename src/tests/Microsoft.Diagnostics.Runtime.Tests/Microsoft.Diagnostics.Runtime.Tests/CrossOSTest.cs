@@ -9,7 +9,7 @@ namespace Microsoft.Diagnostics.Runtime.Tests
 {
     public class CrossOSTest
     {
-        [WindowsFact] // ModuleInfo.Version only supports native modules at the moment
+        [WindowsFact(Skip = "We don't have the artifact folder yet.")] // ModuleInfo.Version only supports native modules at the moment
         public void LinuxDebugTest()
         {
             string artifacts = TestTargets.GetTestArtifactFolder();
@@ -27,7 +27,7 @@ namespace Microsoft.Diagnostics.Runtime.Tests
             Assert.Contains("/home/leculver/clrmd/src/TestTargets/bin/x64/Arrays.dll", domain.Modules.Select(m => m.Name));
         }
 
-        [Fact]
+        [Fact(Skip = "We don't have the artifact folder yet.")]
         public void SingleFileTest()
         {
             string artifacts = TestTargets.GetTestArtifactFolder();
