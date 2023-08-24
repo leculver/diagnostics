@@ -1,0 +1,92 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+#pragma warning disable CA1050 // Declare types in namespaces
+#pragma warning disable CA1823 // Avoid unused private fields
+#pragma warning disable IDE0051 // Remove unused private members
+#pragma warning disable IDE0052 // Remove unread private members
+#pragma warning disable IDE0059 // Unnecessary assignment of a value
+#pragma warning disable CA1810 // Initialize reference type static fields inline
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.CompilerServices;
+
+public class Program
+{
+    public static readonly int s_publicField;
+    private static readonly int s_privateField;
+    internal static readonly int s_internalField;
+    protected static readonly int s_protectedField;
+
+    public readonly int publicField;
+    private readonly int privateField;
+    internal readonly int internalField;
+    protected readonly int protectedField;
+
+    static Program()
+    {
+        s_privateField = s_publicField;
+        s_internalField = s_privateField;
+        s_protectedField = s_internalField;
+    }
+
+    private Program()
+    {
+        privateField = publicField;
+        internalField = privateField;
+        protectedField = internalField;
+    }
+
+    private static void Main()
+    {
+        RuntimeHelpers.RunClassConstructor(typeof(PublicClass).TypeHandle);
+        RuntimeHelpers.RunClassConstructor(typeof(PrivateClass).TypeHandle);
+        RuntimeHelpers.RunClassConstructor(typeof(InternalClass).TypeHandle);
+        RuntimeHelpers.RunClassConstructor(typeof(ProtectedClass).TypeHandle);
+        RuntimeHelpers.RunClassConstructor(typeof(AbstractClass).TypeHandle);
+        RuntimeHelpers.RunClassConstructor(typeof(SealedClass).TypeHandle);
+        RuntimeHelpers.RunClassConstructor(typeof(StaticClass).TypeHandle);
+        throw new Exception();
+    }
+
+    public class PublicClass
+    {
+    }
+
+    private sealed class PrivateClass
+    {
+    }
+
+    internal sealed class InternalClass
+    {
+    }
+
+    protected class ProtectedClass
+    {
+    }
+
+    private abstract class AbstractClass
+    {
+    }
+
+    private sealed class SealedClass
+    {
+    }
+
+    private static class StaticClass
+    {
+    }
+
+    // TODO
+    /*
+    protected internal sealed class ProtectedInternalClass
+    {
+    }
+
+    private protected class PrivateProtectedClass
+    {
+    }
+    */
+}
