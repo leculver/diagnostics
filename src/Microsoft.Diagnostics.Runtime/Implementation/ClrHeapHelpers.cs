@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
@@ -665,12 +665,12 @@ namespace Microsoft.Diagnostics.Runtime.Implementation
             DacOOMData oomData;
             if (subHeap.Heap.IsServer)
             {
-                if (!_sos.GetOOMData(out oomData) || (oomData.Reason == OutOfMemoryReason.None && oomData.GetMemoryFailure == GetMemoryFailureReason.None))
+                if (!_sos.GetOOMData(subHeap.Address, out oomData) || (oomData.Reason == OutOfMemoryReason.None && oomData.GetMemoryFailure == GetMemoryFailureReason.None))
                     return null;
             }
             else
             {
-                if (!_sos.GetOOMData(subHeap.Address, out oomData) || (oomData.Reason == OutOfMemoryReason.None && oomData.GetMemoryFailure == GetMemoryFailureReason.None))
+                if (!_sos.GetOOMData(out oomData) || (oomData.Reason == OutOfMemoryReason.None && oomData.GetMemoryFailure == GetMemoryFailureReason.None))
                     return null;
             }
 
