@@ -9,6 +9,7 @@ using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Etlx;
 using Microsoft.Diagnostics.Tracing.Stacks;
 using Microsoft.Diagnostics.Tracing.Stacks.Formats;
+using Microsoft.Internal.Common.Utils;
 
 namespace Microsoft.Diagnostics.Tools.Trace
 {
@@ -84,13 +85,17 @@ namespace Microsoft.Diagnostics.Tools.Trace
                 };
                 computer.GenerateThreadTimeStacks(stackSource);
 
+                // Wrap the stack source to strip synthetic ".il" suffixes from module names.
+                // See https://github.com/dotnet/diagnostics/issues/3102
+                EventPipeStackSourceFixup fixedSource = new(stackSource);
+
                 switch (format)
                 {
                     case TraceFileFormat.Speedscope:
-                        SpeedScopeStackSourceWriter.WriteStackViewAsJson(stackSource, outputFilename);
+                        SpeedScopeStackSourceWriter.WriteStackViewAsJson(fixedSource, outputFilename);
                         break;
                     case TraceFileFormat.Chromium:
-                        ChromiumStackSourceWriter.WriteStackViewAsJson(stackSource, outputFilename, compress: false);
+                        ChromiumStackSourceWriter.WriteStackViewAsJson(fixedSource, outputFilename, compress: false);
                         break;
                     default:
                         // we should never get here

@@ -15,6 +15,7 @@ using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Etlx;
 using Microsoft.Diagnostics.Tracing.Stacks;
 using Microsoft.Internal.Common;
+using Microsoft.Internal.Common.Utils;
 
 namespace Microsoft.Diagnostics.Tools.Trace
 {
@@ -57,11 +58,15 @@ namespace Microsoft.Diagnostics.Tools.Trace
 
                     computer.GenerateThreadTimeStacks(stackSource);
 
+                    // Wrap the stack source to strip synthetic ".il" suffixes from module names.
+                    // See https://github.com/dotnet/diagnostics/issues/3102
+                    EventPipeStackSourceFixup fixedSource = new(stackSource);
+
                     FilterParams filterParams = new()
                     {
                         FoldRegExs = "CPU_TIME;UNMANAGED_CODE_TIME;{Thread (}",
                     };
-                    FilterStackSource filterStack = new(filterParams, stackSource, ScalingPolicyKind.ScaleToData);
+                    FilterStackSource filterStack = new(filterParams, fixedSource, ScalingPolicyKind.ScaleToData);
                     CallTree callTree = new(ScalingPolicyKind.ScaleToData);
                     callTree.StackSource = filterStack;
 

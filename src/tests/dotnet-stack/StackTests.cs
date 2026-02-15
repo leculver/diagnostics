@@ -20,33 +20,33 @@ namespace Microsoft.Diagnostics.Tools.Stack
         private readonly ITestOutputHelper _output;
 
         private const string _correctStack70 = @"  [Native Frames]
-  System.Console.il!Interop+Kernel32.ReadFile(int,unsigned int8*,int32,int32&,int)
-  System.Console.il!System.ConsolePal+WindowsConsoleStream.ReadFileNative(int,value class System.Span`1<unsigned int8>,bool,int32&,bool)
-  System.Console.il!System.ConsolePal+WindowsConsoleStream.Read(value class System.Span`1<unsigned int8>)
-  System.Console.il!System.IO.ConsoleStream.Read(unsigned int8[],int32,int32)
-  System.Private.CoreLib.il!System.IO.StreamReader.ReadBuffer()
-  System.Private.CoreLib.il!System.IO.StreamReader.Read()
-  System.Console.il!System.IO.SyncTextReader.Read()
-  System.Console.il!System.Console.Read()
+  System.Console!Interop+Kernel32.ReadFile(int,unsigned int8*,int32,int32&,int)
+  System.Console!System.ConsolePal+WindowsConsoleStream.ReadFileNative(int,value class System.Span`1<unsigned int8>,bool,int32&,bool)
+  System.Console!System.ConsolePal+WindowsConsoleStream.Read(value class System.Span`1<unsigned int8>)
+  System.Console!System.IO.ConsoleStream.Read(unsigned int8[],int32,int32)
+  System.Private.CoreLib!System.IO.StreamReader.ReadBuffer()
+  System.Private.CoreLib!System.IO.StreamReader.Read()
+  System.Console!System.IO.SyncTextReader.Read()
+  System.Console!System.Console.Read()
   ?!?";
 
         private const string _correctStack60 = @"  [Native Frames]
-  System.Console.il!System.ConsolePal+WindowsConsoleStream.ReadFileNative(int,value class System.Span`1<unsigned int8>,bool,int32&,bool)
-  System.Console.il!System.ConsolePal+WindowsConsoleStream.Read(value class System.Span`1<unsigned int8>)
-  System.Console.il!System.IO.ConsoleStream.Read(unsigned int8[],int32,int32)
-  System.Private.CoreLib.il!System.IO.StreamReader.ReadBuffer()
-  System.Private.CoreLib.il!System.IO.StreamReader.Read()
-  System.Console.il!System.IO.SyncTextReader.Read()
-  System.Console.il!System.Console.Read()
+  System.Console!System.ConsolePal+WindowsConsoleStream.ReadFileNative(int,value class System.Span`1<unsigned int8>,bool,int32&,bool)
+  System.Console!System.ConsolePal+WindowsConsoleStream.Read(value class System.Span`1<unsigned int8>)
+  System.Console!System.IO.ConsoleStream.Read(unsigned int8[],int32,int32)
+  System.Private.CoreLib!System.IO.StreamReader.ReadBuffer()
+  System.Private.CoreLib!System.IO.StreamReader.Read()
+  System.Console!System.IO.SyncTextReader.Read()
+  System.Console!System.Console.Read()
   StackTracee!Tracee.Program.Main(class System.String[])";
 
         private const string _correctStack31 = @"  [Native Frames]
-  System.Console.il!System.ConsolePal+WindowsConsoleStream.ReadFileNative(int,unsigned int8[],int32,int32,bool,int32&,bool)
-  System.Console.il!System.ConsolePal+WindowsConsoleStream.Read(unsigned int8[],int32,int32)
-  System.Private.CoreLib.il!System.IO.StreamReader.ReadBuffer()
-  System.Private.CoreLib.il!System.IO.StreamReader.Read()
-  System.Console.il!System.IO.SyncTextReader.Read()
-  System.Console.il!System.Console.Read()
+  System.Console!System.ConsolePal+WindowsConsoleStream.ReadFileNative(int,unsigned int8[],int32,int32,bool,int32&,bool)
+  System.Console!System.ConsolePal+WindowsConsoleStream.Read(unsigned int8[],int32,int32)
+  System.Private.CoreLib!System.IO.StreamReader.ReadBuffer()
+  System.Private.CoreLib!System.IO.StreamReader.Read()
+  System.Console!System.IO.SyncTextReader.Read()
+  System.Console!System.Console.Read()
   StackTracee!Tracee.Program.Main(class System.String[])";
 
         public static IEnumerable<object[]> Configurations => TestRunner.Configurations;
@@ -99,6 +99,22 @@ namespace Microsoft.Diagnostics.Tools.Stack
             {
                 Assert.True(correctStackParts[j] == stackParts[i], $"{correctStackParts[j]} != {stackParts[i]}");
             }
+        }
+
+        [Theory]
+        [InlineData("System.Console.il!System.Console.Read()", "System.Console!System.Console.Read()")]
+        [InlineData("System.Private.CoreLib.il!System.IO.StreamReader.Read()", "System.Private.CoreLib!System.IO.StreamReader.Read()")]
+        [InlineData("System.Private.CoreLib.ni!System.IO.StreamReader.Read()", "System.Private.CoreLib!System.IO.StreamReader.Read()")]
+        [InlineData("MyApp!Program.Main()", "MyApp!Program.Main()")]
+        [InlineData("[Native Frames]", "[Native Frames]")]
+        [InlineData("Thread (1234)", "Thread (1234)")]
+        [InlineData(null, null)]
+        [InlineData("", "")]
+        [InlineData("UNMANAGED_CODE_TIME", "UNMANAGED_CODE_TIME")]
+        [InlineData("?!?", "?!?")]
+        public void StripILSuffix_RemovesILAndNISuffixes(string input, string expected)
+        {
+            Assert.Equal(expected, Microsoft.Internal.Common.Utils.EventPipeStackSourceFixup.StripILSuffix(input));
         }
     }
 }

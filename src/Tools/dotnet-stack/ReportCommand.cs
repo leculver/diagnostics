@@ -80,19 +80,23 @@ namespace Microsoft.Diagnostics.Tools.Stack
                     SampleProfilerThreadTimeComputer computer = new(eventLog, symbolReader);
                     computer.GenerateThreadTimeStacks(stackSource);
 
+                    // Wrap the stack source to strip synthetic ".il" suffixes from module names.
+                    // See https://github.com/dotnet/diagnostics/issues/3102
+                    EventPipeStackSourceFixup fixedSource = new(stackSource);
+
                     Dictionary<int, List<StackSourceSample>> samplesForThread = new();
 
-                    stackSource.ForEach((sample) => {
+                    fixedSource.ForEach((sample) => {
                         StackSourceCallStackIndex stackIndex = sample.StackIndex;
-                        while (!stackSource.GetFrameName(stackSource.GetFrameIndex(stackIndex), false).StartsWith("Thread ("))
+                        while (!fixedSource.GetFrameName(fixedSource.GetFrameIndex(stackIndex), false).StartsWith("Thread ("))
                         {
-                            stackIndex = stackSource.GetCallerIndex(stackIndex);
+                            stackIndex = fixedSource.GetCallerIndex(stackIndex);
                         }
 
                         // long form for: int.Parse(threadFrame["Thread (".Length..^1)])
                         // Thread id is in the frame name as "Thread (<ID>)"
                         string template = "Thread (";
-                        string threadFrame = stackSource.GetFrameName(stackSource.GetFrameIndex(stackIndex), false);
+                        string threadFrame = fixedSource.GetFrameName(fixedSource.GetFrameIndex(stackIndex), false);
 
                         // we are looking for the first index of ) because
                         // we need to handle a thread name like: Thread (4008) (.NET IO ThreadPool Worker)
@@ -115,7 +119,7 @@ namespace Microsoft.Diagnostics.Tools.Stack
 #if DEBUG
                         stdOutput.WriteLine($"Found {samples.Count} stacks for thread 0x{threadId:X}");
 #endif
-                        PrintStack(stdOutput, threadId, samples[0], stackSource);
+                        PrintStack(stdOutput, threadId, samples[0], fixedSource);
                     }
                 }
             }
