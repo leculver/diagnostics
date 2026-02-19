@@ -175,7 +175,7 @@ namespace Microsoft.Diagnostics.Tools.Trace
 
             console.WriteLine("");
             console.WriteLine(string.Format("{0, -40}", "Provider Name") + string.Format("{0, -20}", "Keywords") +
-                string.Format("{0, -20}", "Level") + "Enabled By");  // +4 is for the tab
+                string.Format("{0, -20}", "Level") + string.Format("{0, -20}", "Enabled By") + "Filter Data");
             foreach (EventPipeProvider provider in providers)
             {
                 List<string> providerSources = new();
@@ -194,12 +194,23 @@ namespace Microsoft.Diagnostics.Tools.Trace
                         providerSources.Add("--profile");
                     }
                 }
-                console.WriteLine(string.Format("{0, -80}", $"{GetProviderDisplayString(provider)}") + string.Join(", ", providerSources));
+                string filterData = GetFilterDataDisplayString(provider);
+                console.WriteLine(string.Format("{0, -80}", $"{GetProviderDisplayString(provider)}") + string.Format("{0, -20}", string.Join(", ", providerSources)) + filterData);
             }
             console.WriteLine("");
         }
         private static string GetProviderDisplayString(EventPipeProvider provider) =>
             string.Format("{0, -40}", provider.Name) + string.Format("0x{0, -18}", $"{provider.Keywords:X16}") + string.Format("{0, -8}", provider.EventLevel.ToString() + $"({(int)provider.EventLevel})");
+
+        private static string GetFilterDataDisplayString(EventPipeProvider provider)
+        {
+            if (provider.Arguments == null || provider.Arguments.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return string.Join(";", provider.Arguments.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+        }
 
         public static EventPipeProvider ToCLREventPipeProvider(string clreventslist, string clreventlevel)
         {

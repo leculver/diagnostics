@@ -322,6 +322,47 @@ namespace Microsoft.Diagnostics.Tools.Trace
             EventPipeProvider single = Assert.Single(actual, p => p.Name == "Microsoft-Windows-DotNETRuntime");
             Assert.Equal(expected, single);
         }
+        [Fact]
+        public void PrintProviders_ShowsFilterData()
+        {
+            StringWriter capture = new();
+            TextWriter original = Console.Out;
+            try
+            {
+                Console.SetOut(capture);
+                _ = ProviderUtils.ComputeProviderConfig(
+                    new[] { "Microsoft-Extensions-Logging:0xC:2:FilterSpec=*:Error" },
+                    string.Empty, string.Empty, Array.Empty<string>(), true);
+                string output = capture.ToString();
+                string line = output.WhereLineContains("Microsoft-Extensions-Logging");
+                Assert.Contains("FilterSpec=*:Error", line, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Console.SetOut(original);
+            }
+        }
+
+        [Fact]
+        public void PrintProviders_NoFilterData_NoExtra()
+        {
+            StringWriter capture = new();
+            TextWriter original = Console.Out;
+            try
+            {
+                Console.SetOut(capture);
+                _ = ProviderUtils.ComputeProviderConfig(
+                    new[] { "MyProvider:0x1:Error" },
+                    string.Empty, string.Empty, Array.Empty<string>(), true);
+                string output = capture.ToString();
+                string line = output.WhereLineContains("MyProvider");
+                Assert.DoesNotContain("FilterSpec", line, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Console.SetOut(original);
+            }
+        }
     }
 
     internal static class TestStringExtensions

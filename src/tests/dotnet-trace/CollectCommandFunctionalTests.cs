@@ -294,7 +294,7 @@ namespace Microsoft.Diagnostics.Tools.Trace
         }
 
         private static string outputFile = $"Output File    : {Directory.GetCurrentDirectory() + Path.DirectorySeparatorChar}trace.nettrace";
-        private const string ProviderHeader = "Provider Name                           Keywords            Level               Enabled By";
+        private const string ProviderHeader = "Provider Name                           Keywords            Level               Enabled By          Filter Data";
         private static readonly string[] CommonTail = [
             "Process        : <PROCESS>",
             outputFile,

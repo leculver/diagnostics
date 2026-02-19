@@ -452,7 +452,7 @@ namespace Microsoft.Diagnostics.Tools.Trace
             };
         }
 
-        private const string ProviderHeader = "Provider Name                           Keywords            Level               Enabled By";
+        private const string ProviderHeader = "Provider Name                           Keywords            Level               Enabled By          Filter Data";
         private static string LinuxHeader => $"{"Linux Perf Events",-80}Enabled By";
         private static string LinuxProfile(string name) => $"{name,-80}--profile";
         private static string LinuxPerfEvent(string spec) => $"{spec,-80}--perf-events";
