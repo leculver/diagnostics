@@ -34,6 +34,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 MaxTimeSeriesOption,
                 DurationOption,
                 ShowDeltasOption,
+                SnapshotOption,
                 DSRouterOption
             };
 
@@ -51,6 +52,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 maxTimeSeries: parseResult.GetValue(MaxTimeSeriesOption),
                 duration: parseResult.GetValue(DurationOption),
                 showDeltas: parseResult.GetValue(ShowDeltasOption),
+                snapshot: parseResult.GetValue(SnapshotOption),
                 dsrouter: parseResult.GetValue(DSRouterOption)
             ));
 
@@ -74,6 +76,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 MaxHistogramOption,
                 MaxTimeSeriesOption,
                 DurationOption,
+                SnapshotOption,
                 DSRouterOption
             };
 
@@ -92,6 +95,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 maxHistograms: parseResult.GetValue(MaxHistogramOption),
                 maxTimeSeries: parseResult.GetValue(MaxTimeSeriesOption),
                 duration: parseResult.GetValue(DurationOption),
+                snapshot: parseResult.GetValue(SnapshotOption),
                 dsrouter: parseResult.GetValue(DSRouterOption)));
 
             return collectCommand;
@@ -208,6 +212,13 @@ namespace Microsoft.Diagnostics.Tools.Counters
             {
                 Description = @"Shows an extra column in the metrics table that displays the delta between the previous metric value and the most recent value." +
                " This is useful to monitor the rate of change for a metric."
+            };
+
+        private static readonly Option<bool> SnapshotOption =
+            new("--snapshot")
+            {
+                Description = "Collect a single snapshot of counter values and exit. Useful for scripting and automation scenarios " +
+                "where you want a point-in-time capture rather than continuous monitoring."
             };
 
         public static int List()

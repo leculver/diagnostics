@@ -217,6 +217,7 @@ namespace DotnetCounters.UnitTests
                             maxHistograms: 10,
                             maxTimeSeries: 1000,
                             duration: TimeSpan.FromSeconds(10),
+                            snapshot: false,
                             dsrouter: null));
                 }, testRunner, source.Token);
 

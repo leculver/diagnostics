@@ -30,6 +30,8 @@ namespace Microsoft.Diagnostics.Tools.Counters
         private ICounterRenderer _renderer;
         private string _output;
         private bool _pauseCmdSet;
+        private bool _snapshot;
+        private bool _snapshotDataReceived;
         private readonly TaskCompletionSource<ReturnCode> _shouldExit;
         private DiagnosticsClient _diagnosticsClient;
         private MetricsPipelineSettings _settings;
@@ -126,6 +128,11 @@ namespace Microsoft.Diagnostics.Tools.Counters
             {
                 _renderer.CounterPayloadReceived(payload, _pauseCmdSet);
             }
+
+            if (_snapshot)
+            {
+                _snapshotDataReceived = true;
+            }
         }
 
         private static string AppendQuantile(string tags, string quantile) => string.IsNullOrEmpty(tags) ? quantile : $"{tags},{quantile}";
@@ -175,6 +182,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
             int maxTimeSeries,
             TimeSpan duration,
             bool showDeltas,
+            bool snapshot,
             string dsrouter)
         {
             try
@@ -207,8 +215,16 @@ namespace Microsoft.Diagnostics.Tools.Counters
                         _counterList = ConfigureCounters(counters);
                         _renderer = new ConsoleWriter(new DefaultConsole(useAnsi), showDeltaColumn:showDeltas);
                         _diagnosticsClient = holder.Client;
+                        _snapshot = snapshot;
                         _settings = new MetricsPipelineSettings();
-                        _settings.Duration = duration == TimeSpan.Zero ? Timeout.InfiniteTimeSpan : duration;
+                        if (snapshot && duration == TimeSpan.Zero)
+                        {
+                            _settings.Duration = TimeSpan.FromSeconds(refreshInterval + BufferDelaySecs + 1);
+                        }
+                        else
+                        {
+                            _settings.Duration = duration == TimeSpan.Zero ? Timeout.InfiniteTimeSpan : duration;
+                        }
                         _settings.MaxHistograms = maxHistograms;
                         _settings.MaxTimeSeries = maxTimeSeries;
                         _settings.CounterIntervalSeconds = refreshInterval;
@@ -264,6 +280,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
             int maxHistograms,
             int maxTimeSeries,
             TimeSpan duration,
+            bool snapshot,
             string dsrouter)
         {
             try
@@ -293,8 +310,16 @@ namespace Microsoft.Diagnostics.Tools.Counters
                         // the launch command may misinterpret app arguments as the old space separated
                         // provider list so we need to ignore it in that case
                         _counterList = ConfigureCounters(counters);
+                        _snapshot = snapshot;
                         _settings = new MetricsPipelineSettings();
-                        _settings.Duration = duration == TimeSpan.Zero ? Timeout.InfiniteTimeSpan : duration;
+                        if (snapshot && duration == TimeSpan.Zero)
+                        {
+                            _settings.Duration = TimeSpan.FromSeconds(refreshInterval + BufferDelaySecs + 1);
+                        }
+                        else
+                        {
+                            _settings.Duration = duration == TimeSpan.Zero ? Timeout.InfiniteTimeSpan : duration;
+                        }
                         _settings.MaxHistograms = maxHistograms;
                         _settings.MaxTimeSeries = maxTimeSeries;
                         _settings.CounterIntervalSeconds = refreshInterval;
@@ -552,6 +577,12 @@ namespace Microsoft.Diagnostics.Tools.Counters
             while (!_shouldExit.Task.Wait(250, token))
             {
                 HandleBufferedEvents();
+
+                if (_snapshot && _snapshotDataReceived)
+                {
+                    break;
+                }
+
                 if (!Console.IsInputRedirected && Console.KeyAvailable)
                 {
                     ConsoleKey cmd = Console.ReadKey(true).Key;
