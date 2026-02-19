@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.CommandLine;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Diagnostics.Tracing.StackSources;
@@ -34,6 +35,7 @@ namespace Microsoft.Diagnostics.Tools.Trace
         {
             Console.Error.WriteLine("Error: subcommand was not provided. Available subcommands:");
             Console.Error.WriteLine("    topN: Finds the top N methods on the callstack the longest.");
+            Console.Error.WriteLine("    events: Lists individual events from the trace.");
             return Task.FromResult(-1);
         }
 
@@ -99,6 +101,104 @@ namespace Microsoft.Diagnostics.Tools.Trace
             }
         }
 
+
+        private static int EventsReport(string traceFile, string providerFilter, string eventFilter, string format)
+        {
+            try
+            {
+                if (!File.Exists(traceFile))
+                {
+                    Console.Error.WriteLine($"[ERROR] File not found: {traceFile}");
+                    return 1;
+                }
+
+                using EventPipeEventSource source = new(traceFile);
+                bool asJson = string.Equals(format, "json", StringComparison.OrdinalIgnoreCase);
+
+                source.Dynamic.All += (TraceEvent data) =>
+                {
+                    if (providerFilter != null &&
+                        !data.ProviderName.Contains(providerFilter, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    if (eventFilter != null &&
+                        !data.EventName.Contains(eventFilter, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    if (asJson)
+                    {
+                        WriteEventAsJson(data);
+                    }
+                    else
+                    {
+                        WriteEventAsText(data);
+                    }
+                };
+
+                source.Process();
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[ERROR] {ex}");
+                return 1;
+            }
+        }
+
+        private static void WriteEventAsText(TraceEvent data)
+        {
+            Console.Write($"{data.TimeStamp:o} {data.ProviderName}/{data.EventName}");
+
+            string[] payloadNames = data.PayloadNames;
+            if (payloadNames != null && payloadNames.Length > 0)
+            {
+                Console.Write(" ");
+                for (int i = 0; i < payloadNames.Length; i++)
+                {
+                    if (i > 0)
+                    {
+                        Console.Write(", ");
+                    }
+
+                    object value = data.PayloadValue(i);
+                    Console.Write($"{payloadNames[i]}={value}");
+                }
+            }
+
+            Console.WriteLine();
+        }
+
+        private static void WriteEventAsJson(TraceEvent data)
+        {
+            Dictionary<string, object> eventObj = new()
+            {
+                ["timestamp"] = data.TimeStamp.ToString("o"),
+                ["provider"] = data.ProviderName,
+                ["event"] = data.EventName,
+                ["processId"] = data.ProcessID,
+                ["threadId"] = data.ThreadID,
+            };
+
+            string[] payloadNames = data.PayloadNames;
+            if (payloadNames != null && payloadNames.Length > 0)
+            {
+                Dictionary<string, object> payload = new();
+                for (int i = 0; i < payloadNames.Length; i++)
+                {
+                    object value = data.PayloadValue(i);
+                    payload[payloadNames[i]] = value?.ToString();
+                }
+
+                eventObj["payload"] = payload;
+            }
+
+            Console.WriteLine(JsonSerializer.Serialize(eventObj));
+        }
+
         public static Command ReportCommand()
         {
             Command topNCommand = new(
@@ -117,12 +217,29 @@ namespace Microsoft.Diagnostics.Tools.Trace
                 verbose: parseResult.GetValue(VerboseOption)
             )));
 
+            Command eventsCommand = new(
+                name: "events",
+                description: "Lists individual events from the trace with timestamps and payload data.")
+            {
+                ProviderFilterOption,
+                EventFilterOption,
+                FormatOption,
+            };
+
+            eventsCommand.SetAction((parseResult, ct) => Task.FromResult(EventsReport(
+                traceFile: parseResult.GetValue(FileNameArgument),
+                providerFilter: parseResult.GetValue(ProviderFilterOption),
+                eventFilter: parseResult.GetValue(EventFilterOption),
+                format: parseResult.GetValue(FormatOption)
+            )));
+
             Command reportCommand = new(
                 name: "report",
                 description: "Generates a report into stdout from a previously generated trace.")
                 {
                     FileNameArgument,
-                    topNCommand
+                    topNCommand,
+                    eventsCommand
                 };
             reportCommand.SetAction((parseResult, ct) => Report());
 
@@ -153,6 +270,25 @@ namespace Microsoft.Diagnostics.Tools.Trace
             new("--verbose", "-v")
             {
                 Description = "Output the parameters of each method in full. If not specified, parameters will be truncated."
+            };
+
+        private static readonly Option<string> ProviderFilterOption =
+            new("--provider")
+            {
+                Description = "Filter events to a specific provider name (substring match, case-insensitive)."
+            };
+
+        private static readonly Option<string> EventFilterOption =
+            new("--event")
+            {
+                Description = "Filter events to a specific event name (substring match, case-insensitive)."
+            };
+
+        private static readonly Option<string> FormatOption =
+            new("--format", "-f")
+            {
+                Description = "Output format: text (default) or json (one JSON object per line).",
+                DefaultValueFactory = _ => "text"
             };
     }
 }
