@@ -27,8 +27,9 @@ namespace Microsoft.Diagnostics.Tools.Stack
         /// <param name="processId">The process to report the stack from.</param>
         /// <param name="name">The name of process to report the stack from.</param>
         /// <param name="duration">The duration of to trace the target for. </param>
+        /// <param name="rundown">Whether to collect rundown events for symbolication.</param>
         /// <returns></returns>
-        private static async Task<int> Report(CancellationToken ct, TextWriter stdOutput, TextWriter stdError, int processId, string name, TimeSpan duration)
+        private static async Task<int> Report(CancellationToken ct, TextWriter stdOutput, TextWriter stdError, int processId, string name, TimeSpan duration, bool rundown)
         {
             string tempNetTraceFilename = Path.Join(Path.GetTempPath(), Path.GetRandomFileName() + ".nettrace");
             string tempEtlxFilename = "";
@@ -47,9 +48,9 @@ namespace Microsoft.Diagnostics.Tools.Stack
                 // collect a *short* trace with stack samples
                 // the hidden '--duration' flag can increase the time of this trace in case 10ms
                 // is too short in a given environment, e.g., resource constrained systems
-                // N.B. - This trace INCLUDES rundown.  For sufficiently large applications, it may take non-trivial time to collect
-                //        the symbol data in rundown.
-                EventPipeSession session = await client.StartEventPipeSessionAsync(providers, requestRundown:true, token:ct).ConfigureAwait(false);
+                // N.B. - When rundown is enabled, this trace INCLUDES rundown.  For sufficiently large applications,
+                //        it may take non-trivial time to collect the symbol data in rundown.
+                EventPipeSession session = await client.StartEventPipeSessionAsync(providers, requestRundown:rundown, token:ct).ConfigureAwait(false);
                 using (session)
                 using (FileStream fs = File.OpenWrite(tempNetTraceFilename))
                 {
@@ -58,11 +59,14 @@ namespace Microsoft.Diagnostics.Tools.Stack
                     await session.StopAsync(ct).ConfigureAwait(false);
 
                     // check if rundown is taking more than 5 seconds and add comment to report
-                    Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
-                    Task completedTask = await Task.WhenAny(copyTask, timeoutTask).ConfigureAwait(false);
-                    if (completedTask == timeoutTask)
+                    if (rundown)
                     {
-                        stdOutput.WriteLine($"# Sufficiently large applications can cause this reportCommand to take non-trivial amounts of time");
+                        Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+                        Task completedTask = await Task.WhenAny(copyTask, timeoutTask).ConfigureAwait(false);
+                        if (completedTask == timeoutTask)
+                        {
+                            stdOutput.WriteLine($"# Sufficiently large applications can cause this reportCommand to take non-trivial amounts of time");
+                        }
                     }
                     await copyTask.ConfigureAwait(false);
                 }
@@ -170,7 +174,8 @@ namespace Microsoft.Diagnostics.Tools.Stack
             {
                 ProcessIdOption,
                 NameOption,
-                DurationOption
+                DurationOption,
+                RundownOption
             };
 
             reportCommand.SetAction((parseResult, ct) => Report(ct,
@@ -178,7 +183,8 @@ namespace Microsoft.Diagnostics.Tools.Stack
                 stdError: parseResult.Configuration.Error,
                 processId: parseResult.GetValue(ProcessIdOption),
                 name: parseResult.GetValue(NameOption),
-                duration: parseResult.GetValue(DurationOption)));
+                duration: parseResult.GetValue(DurationOption),
+                rundown: parseResult.GetValue(RundownOption)));
 
             return reportCommand;
         }
@@ -201,6 +207,13 @@ namespace Microsoft.Diagnostics.Tools.Stack
             new("--name", "-n")
             {
                 Description = "The name of the process to report the stack."
+            };
+
+        private static readonly Option<bool> RundownOption =
+            new("--rundown")
+            {
+                Description = "Collect rundown events for symbolication. Disable with --rundown false to skip rundown, which is faster for large applications but may result in unsymbolicated frames.",
+                DefaultValueFactory = _ => true
             };
     }
 }
