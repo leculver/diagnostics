@@ -3,6 +3,7 @@
 
 using System;
 using System.CommandLine;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.NETCore.Client;
@@ -40,9 +41,31 @@ namespace Microsoft.Diagnostics.Tools.Dump
 
                 if (output == null)
                 {
-                    // Build timestamp based file path
+                    // Build timestamp based file path, including the process name when available
                     string timestamp = $"{DateTime.Now:yyyyMMdd_HHmmss}";
-                    output = Path.Combine(Directory.GetCurrentDirectory(), RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"dump_{timestamp}.dmp" : $"core_{timestamp}");
+                    string processName = null;
+                    try
+                    {
+                        using Process process = Process.GetProcessById(processId);
+                        processName = process.ProcessName;
+                        foreach (char c in Path.GetInvalidFileNameChars())
+                        {
+                            processName = processName.Replace(c, '_');
+                        }
+                    }
+                    catch
+                    {
+                        // Process may have exited; fall back to default naming
+                    }
+
+                    if (!string.IsNullOrEmpty(processName))
+                    {
+                        output = Path.Combine(Directory.GetCurrentDirectory(), RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"{processName}_{timestamp}.dmp" : $"{processName}_{timestamp}");
+                    }
+                    else
+                    {
+                        output = Path.Combine(Directory.GetCurrentDirectory(), RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"dump_{timestamp}.dmp" : $"core_{timestamp}");
+                    }
                 }
 
                 // Make sure the dump path is NOT relative. This path could be sent to the runtime
