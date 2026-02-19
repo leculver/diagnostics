@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Rendering;
 using System.Diagnostics;
+using System.Diagnostics.Tracing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -62,9 +63,13 @@ namespace Microsoft.Diagnostics.Tools.Trace
         /// <param name="stoppingEventProviderName">A string, parsed as-is, that will stop the trace upon hitting an event with the matching provider name. For a more specific stopping event, additionally provide `--stopping-event-event-name` and/or `--stopping-event-payload-filter`.</param>
         /// <param name="stoppingEventEventName">A string, parsed as-is, that will stop the trace upon hitting an event with the matching event name. Requires `--stopping-event-provider-name` to be set. For a more specific stopping event, additionally provide `--stopping-event-payload-filter`.</param>
         /// <param name="stoppingEventPayloadFilter">A string, parsed as [payload_field_name]:[payload_field_value] pairs separated by commas, that will stop the trace upon hitting an event with a matching payload. Requires `--stopping-event-provider-name` and `--stopping-event-event-name` to be set.</param>
+        /// <param name="stopOnGen2GC">Stop the trace when a non-background Gen2 GC occurs.</param>
+        /// <param name="stopOnGCOverMsec">Stop the trace when a GC takes longer than the specified milliseconds.</param>
+        /// <param name="stopOnGCSuspendOverMSec">Stop the trace when GC EE suspension takes longer than the specified milliseconds.</param>
+        /// <param name="stopOnBGCFinalPauseOverMsec">Stop the trace when a background GC final pause exceeds the specified milliseconds.</param>
         /// <param name="rundown">Collect rundown events.</param>
         /// <returns></returns>
-        internal async Task<int> Collect(CancellationToken ct, CommandLineConfiguration cliConfig, int processId, FileInfo output, uint buffersize, string[] providers, string[] profile, TraceFileFormat format, TimeSpan duration, string clrevents, string clreventlevel, string name, string diagnosticPort, bool showchildio, bool resumeRuntime, string stoppingEventProviderName, string stoppingEventEventName, string stoppingEventPayloadFilter, bool? rundown, string dsrouter)
+        internal async Task<int> Collect(CancellationToken ct, CommandLineConfiguration cliConfig, int processId, FileInfo output, uint buffersize, string[] providers, string[] profile, TraceFileFormat format, TimeSpan duration, string clrevents, string clreventlevel, string name, string diagnosticPort, bool showchildio, bool resumeRuntime, string stoppingEventProviderName, string stoppingEventEventName, string stoppingEventPayloadFilter, bool stopOnGen2GC, int stopOnGCOverMsec, int stopOnGCSuspendOverMSec, int stopOnBGCFinalPauseOverMsec, bool? rundown, string dsrouter)
         {
             bool collectionStopped = false;
             bool cancelOnEnter = true;
@@ -189,6 +194,51 @@ namespace Microsoft.Diagnostics.Tools.Trace
                         }
 
                         payloadFilter[payloadFieldNameValuePair[0]] = payloadFieldNameValuePair[1];
+                    }
+                }
+
+                // Validate GC stopping triggers
+                bool hasGCTriggers = stopOnGen2GC || stopOnGCOverMsec > 0 || stopOnGCSuspendOverMSec > 0 || stopOnBGCFinalPauseOverMsec > 0;
+                if (hasGCTriggers && hasStoppingEventProviderName)
+                {
+                    Console.Error.WriteLine("GC stopping triggers (--stop-on-gen2-gc, --stop-on-gc-over-msec, --stop-on-gc-suspend-over-msec, --stop-on-bgc-final-pause-over-msec) cannot be combined with --stopping-event-provider-name.");
+                    return (int)ReturnCode.ArgumentError;
+                }
+
+                // When GC triggers are active, ensure CLR GC events are enabled
+                if (hasGCTriggers)
+                {
+                    const long GCKeyword = 0x1;
+                    const string ClrProviderName = "Microsoft-Windows-DotNETRuntime";
+
+                    bool hasClrGC = false;
+                    int clrIndex = -1;
+                    for (int i = 0; i < providerCollection.Count; i++)
+                    {
+                        if (string.Equals(providerCollection[i].Name, ClrProviderName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            clrIndex = i;
+                            if ((providerCollection[i].Keywords & GCKeyword) != 0)
+                            {
+                                hasClrGC = true;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (!hasClrGC)
+                    {
+                        if (clrIndex >= 0)
+                        {
+                            EventPipeProvider existing = providerCollection[clrIndex];
+                            providerCollection[clrIndex] = new EventPipeProvider(
+                                existing.Name, existing.EventLevel, existing.Keywords | GCKeyword, existing.Arguments);
+                        }
+                        else
+                        {
+                            providerCollection.Add(new EventPipeProvider(
+                                ClrProviderName, EventLevel.Informational, GCKeyword));
+                        }
                     }
                 }
 
@@ -347,8 +397,21 @@ namespace Microsoft.Diagnostics.Tools.Trace
                             ConsoleWriteLine();
 
                             EventMonitor eventMonitor = null;
+                            GCStoppingTrigger gcTrigger = null;
                             Task copyTask = null;
-                            if (hasStoppingEventProviderName)
+                            if (hasGCTriggers)
+                            {
+                                gcTrigger = new GCStoppingTrigger(
+                                    new PassthroughStream(session.EventStream, eventStream, (int)buffersize, leaveDestinationStreamOpen: true),
+                                    () => shouldExit.Set(),
+                                    stopOnGen2GC,
+                                    stopOnGCOverMsec,
+                                    stopOnGCSuspendOverMSec,
+                                    stopOnBGCFinalPauseOverMsec);
+
+                                copyTask = gcTrigger.ProcessAsync(CancellationToken.None);
+                            }
+                            else if (hasStoppingEventProviderName)
                             {
                                 eventMonitor = new(
                                     stoppingEventProviderName,
@@ -440,6 +503,10 @@ namespace Microsoft.Diagnostics.Tools.Trace
                                 if (eventMonitor != null)
                                 {
                                     await eventMonitor.DisposeAsync().ConfigureAwait(false);
+                                }
+                                if (gcTrigger != null)
+                                {
+                                    await gcTrigger.DisposeAsync().ConfigureAwait(false);
                                 }
                             }
                             // At this point the copyTask will have finished, so wait on the shouldExitTask in case it threw
@@ -554,6 +621,10 @@ namespace Microsoft.Diagnostics.Tools.Trace
                 StoppingEventProviderNameOption,
                 StoppingEventEventNameOption,
                 StoppingEventPayloadFilterOption,
+                StopOnGen2GCOption,
+                StopOnGCOverMsecOption,
+                StopOnGCSuspendOverMSecOption,
+                StopOnBGCFinalPauseOverMsecOption,
                 RundownOption,
                 DSRouterOption
             };
@@ -584,6 +655,10 @@ namespace Microsoft.Diagnostics.Tools.Trace
                                        stoppingEventProviderName: parseResult.GetValue(StoppingEventProviderNameOption),
                                        stoppingEventEventName: parseResult.GetValue(StoppingEventEventNameOption),
                                        stoppingEventPayloadFilter: parseResult.GetValue(StoppingEventPayloadFilterOption),
+                                       stopOnGen2GC: parseResult.GetValue(StopOnGen2GCOption),
+                                       stopOnGCOverMsec: parseResult.GetValue(StopOnGCOverMsecOption),
+                                       stopOnGCSuspendOverMSec: parseResult.GetValue(StopOnGCSuspendOverMSecOption),
+                                       stopOnBGCFinalPauseOverMsec: parseResult.GetValue(StopOnBGCFinalPauseOverMsecOption),
                                        rundown: parseResult.GetValue(RundownOption),
                                        dsrouter: parseResult.GetValue(DSRouterOption));
             });
@@ -635,6 +710,33 @@ namespace Microsoft.Diagnostics.Tools.Trace
             new("--stopping-event-payload-filter")
             {
                 Description = @"A string, parsed as [payload_field_name]:[payload_field_value] pairs separated by commas, that will stop the trace upon hitting an event with a matching payload. Requires `--stopping-event-provider-name` and `--stopping-event-event-name` to be set."
+            };
+
+        private static readonly Option<bool> StopOnGen2GCOption =
+            new("--stop-on-gen2-gc")
+            {
+                Description = @"Stop the trace when a non-background Gen2 garbage collection occurs."
+            };
+
+        private static readonly Option<int> StopOnGCOverMsecOption =
+            new("--stop-on-gc-over-msec")
+            {
+                Description = @"Stop the trace when a garbage collection takes longer than the specified number of milliseconds.",
+                DefaultValueFactory = _ => 0,
+            };
+
+        private static readonly Option<int> StopOnGCSuspendOverMSecOption =
+            new("--stop-on-gc-suspend-over-msec")
+            {
+                Description = @"Stop the trace when GC EE suspension takes longer than the specified number of milliseconds.",
+                DefaultValueFactory = _ => 0,
+            };
+
+        private static readonly Option<int> StopOnBGCFinalPauseOverMsecOption =
+            new("--stop-on-bgc-final-pause-over-msec")
+            {
+                Description = @"Stop the trace when a background GC final pause exceeds the specified number of milliseconds.",
+                DefaultValueFactory = _ => 0,
             };
 
         private static readonly Option<bool?> RundownOption =
