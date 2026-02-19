@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Diagnostics.Tracing;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -18,9 +19,29 @@ namespace Microsoft.Diagnostics.Tools.Trace
         {
             try
             {
+                Console.Out.WriteLine("Built-in profiles:");
                 foreach (Profile profile in DotNETRuntimeProfiles)
                 {
                     Console.Out.WriteLine($"\t{profile.Name,-16} - {profile.Description}");
+                }
+
+                List<Profile> fileProfiles = new();
+                foreach (Profile fp in ProfileFileReader.LoadAllFileProfiles())
+                {
+                    if (!DotNETRuntimeProfiles.Any(p => p.Name.Equals(fp.Name, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        fileProfiles.Add(fp);
+                    }
+                }
+
+                if (fileProfiles.Count > 0)
+                {
+                    Console.Out.WriteLine();
+                    Console.Out.WriteLine($"File-based profiles (from .dtp files):");
+                    foreach (Profile profile in fileProfiles)
+                    {
+                        Console.Out.WriteLine($"\t{profile.Name,-16} - {profile.Description}");
+                    }
                 }
 
                 await Task.FromResult(0).ConfigureAwait(false);

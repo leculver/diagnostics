@@ -125,6 +125,10 @@ namespace Microsoft.Diagnostics.Tools.Trace
                 {
                     Profile selectedProfile = ListProfilesCommandHandler.DotNETRuntimeProfiles
                         .FirstOrDefault(p => p.Name.Equals(profile, StringComparison.OrdinalIgnoreCase));
+
+                    // If not found in built-in profiles, try loading from a .dtp file
+                    selectedProfile ??= ProfileFileReader.TryLoadProfileByName(profile);
+
                     if (selectedProfile == null)
                     {
                         Console.Error.WriteLine($"Invalid profile name: {profile}");
