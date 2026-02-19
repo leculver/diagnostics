@@ -54,6 +54,9 @@ To install the platform's prerequisites and build:
 
 [//]: # (End current test results)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for information on how to contribute to this repo. For general .NET contribution guidelines, see the [.NET runtime contributing guide](https://github.com/dotnet/runtime/blob/main/CONTRIBUTING.md).
 
 ## License
 
