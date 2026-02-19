@@ -21,6 +21,68 @@ namespace Microsoft.Diagnostics.Tools.GCDump
         internal static volatile bool dumpComplete;
 
         /// <summary>
+        /// Queries the GC heap size of the target process via an EventPipe counter session.
+        /// Returns the heap size in bytes, or -1 if the query fails or times out.
+        /// </summary>
+        internal static long TryGetGCHeapSizeBytes(int processId, string diagnosticPort, TextWriter log, int timeoutSeconds = 5)
+        {
+            try
+            {
+                long heapSizeBytes = -1;
+
+                using EventPipeSessionController counterSession = new(processId, diagnosticPort, new List<EventPipeProvider> {
+                    new("System.Runtime", EventLevel.Informational, 0, new Dictionary<string, string> {
+                        { "EventCounterIntervalSec", "1" }
+                    })
+                }, false);
+
+                counterSession.Source.Dynamic.All += (TraceEvent data) =>
+                {
+                    if (data.EventName != "EventCounters")
+                    {
+                        return;
+                    }
+
+                    IDictionary<string, object> payload = (IDictionary<string, object>)data.PayloadValue(0);
+                    IDictionary<string, object> fields = (IDictionary<string, object>)payload["Payload"];
+                    string counterName = fields["Name"].ToString();
+                    if (counterName == "gc-heap-size")
+                    {
+                        if (fields.TryGetValue("Mean", out object meanObj))
+                        {
+                            Interlocked.Exchange(ref heapSizeBytes, (long)(double)meanObj);
+                        }
+                    }
+                };
+
+                Task readerTask = Task.Run(() => counterSession.Source.Process());
+
+                DateTime deadline = DateTime.Now.AddSeconds(timeoutSeconds);
+                while (Interlocked.Read(ref heapSizeBytes) < 0 && DateTime.Now < deadline)
+                {
+                    Thread.Sleep(100);
+                }
+
+                try
+                {
+                    counterSession.EndSession();
+                }
+                catch
+                {
+                    // Best effort cleanup
+                }
+
+                return Interlocked.Read(ref heapSizeBytes);
+            }
+            catch (Exception e)
+            {
+                log.WriteLine($"  [Warning] Could not query GC heap size: {e.Message}");
+                return -1;
+            }
+        }
+
+
+        /// <summary>
         /// Given a nettrace file from a EventPipe session with the appropriate provider and keywords turned on,
         /// generate a GCHeapDump using the resulting events.
         /// </summary>

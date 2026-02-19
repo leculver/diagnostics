@@ -28,7 +28,7 @@ namespace Microsoft.Diagnostics.Tools.GCDump
         /// <param name="diagnosticPort">The diagnostic IPC channel to collect the gcdump from.</param>
         /// <param name="dsrouter">The dsrouter command to use for collecting the gcdump.</param>
         /// <returns></returns>
-        private static async Task<int> Collect(CancellationToken ct, int processId, string output, int timeout, bool verbose, string name, string diagnosticPort, string dsrouter)
+        private static async Task<int> Collect(CancellationToken ct, int processId, string output, int timeout, bool verbose, string name, string diagnosticPort, string dsrouter, int heapWarningThresholdMb)
         {
             try
             {
@@ -64,6 +64,24 @@ namespace Microsoft.Diagnostics.Tools.GCDump
                 }
 
                 Console.Out.WriteLine($"Writing gcdump to '{outputFileInfo.FullName}'...");
+
+                if (heapWarningThresholdMb > 0)
+                {
+                    TextWriter log = verbose ? Console.Out : TextWriter.Null;
+                    long heapSizeBytes = EventPipeDotNetHeapDumper.TryGetGCHeapSizeBytes(processId, diagnosticPort, log);
+                    if (heapSizeBytes > 0)
+                    {
+                        long thresholdBytes = (long)heapWarningThresholdMb * 1024 * 1024;
+                        if (heapSizeBytes >= thresholdBytes)
+                        {
+                            double heapSizeGb = heapSizeBytes / (1024.0 * 1024.0 * 1024.0);
+                            Console.Out.WriteLine($"WARNING: The target process has a GC heap size of {heapSizeGb:F2} GB.");
+                            Console.Out.WriteLine("         Collecting a GC dump forces a full blocking garbage collection on the");
+                            Console.Out.WriteLine("         target process, which may pause it for a significant amount of time.");
+                            Console.Out.WriteLine("         Use '--heap-warning-threshold-mb 0' to disable this warning.");
+                        }
+                    }
+                }
 
                 Task<bool> dumpTask = Task.Run(() => {
                     if (TryCollectMemoryGraph(ct, processId, diagnosticPort, timeout, verbose, out MemoryGraph memoryGraph))
@@ -143,7 +161,8 @@ namespace Microsoft.Diagnostics.Tools.GCDump
                 TimeoutOption,
                 NameOption,
                 DiagnosticPortOption,
-                DsRouterOption
+                DsRouterOption,
+                HeapWarningThresholdMbOption
             };
 
             collectCommand.SetAction(static (parseResult, ct) => Collect(ct,
@@ -153,7 +172,8 @@ namespace Microsoft.Diagnostics.Tools.GCDump
                     verbose: parseResult.GetValue(VerboseOption),
                     name: parseResult.GetValue(NameOption),
                     diagnosticPort: parseResult.GetValue(DiagnosticPortOption) ?? string.Empty,
-                    dsrouter: parseResult.GetValue(DsRouterOption) ?? string.Empty));
+                    dsrouter: parseResult.GetValue(DsRouterOption) ?? string.Empty,
+                    heapWarningThresholdMb: parseResult.GetValue(HeapWarningThresholdMbOption)));
 
             return collectCommand;
         }
@@ -200,6 +220,14 @@ namespace Microsoft.Diagnostics.Tools.GCDump
             new("--dsrouter")
             {
                 Description = "The dsrouter command to use for collecting the gcdump. If specified, the --process-id, --name, or --diagnostic-port options cannot be used."
+            };
+
+        public static int DefaultHeapWarningThresholdMb = 1024;
+        private static readonly Option<int> HeapWarningThresholdMbOption =
+            new("--heap-warning-threshold-mb")
+            {
+                Description = $"Display a warning if the target process GC heap size exceeds this value (in MB) before collecting. Collecting a GC dump triggers a full blocking GC which can pause large-heap processes for a significant time. Set to 0 to disable. Default is {DefaultHeapWarningThresholdMb} MB.",
+                DefaultValueFactory = _ => DefaultHeapWarningThresholdMb,
             };
     }
 }
