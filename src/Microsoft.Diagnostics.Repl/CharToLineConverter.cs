@@ -57,8 +57,9 @@ namespace Microsoft.Diagnostics.Repl
 
         public void Flush()
         {
-            m_callback(m_text.ToString());
+            string line = m_text.ToString();
             m_text.Clear();
+            m_callback(line);
         }
     }
 }

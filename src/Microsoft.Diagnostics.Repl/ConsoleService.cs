@@ -41,6 +41,9 @@ namespace Microsoft.Diagnostics.Repl
         private int m_commandExecuting;
         private string m_lastCommandLine;
 
+        private int m_linesWrittenSinceCommand;
+        private bool m_pagingDisabledForCommand;
+
         /// <summary>
         /// Create an instance of the console provider
         /// </summary>
@@ -214,6 +217,20 @@ namespace Microsoft.Diagnostics.Repl
         {
             ClearLine();
 
+            if (m_interactiveConsole && !m_outputRedirected && m_commandExecuting > 0 && !m_pagingDisabledForCommand)
+            {
+                int pageSize = GetPageSize();
+                if (pageSize > 0 && m_linesWrittenSinceCommand >= pageSize)
+                {
+                    if (!HandlePagerPrompt())
+                    {
+                        m_interruptExecutingCommand?.Cancel();
+                        throw new OperationCanceledException();
+                    }
+                }
+                m_linesWrittenSinceCommand++;
+            }
+
             ConsoleColor? originalColor = null;
             if (color.HasValue)
             {
@@ -227,6 +244,70 @@ namespace Microsoft.Diagnostics.Repl
             }
 
             PrintActiveLine();
+        }
+
+        /// <summary>
+        /// Display a pager prompt and wait for user input when output fills the page.
+        /// </summary>
+        /// <returns>true to continue output, false to cancel the command</returns>
+        private bool HandlePagerPrompt()
+        {
+            Console.Write("-- More -- [space=page, enter=line, a=all, q=quit]");
+
+            // Poll for key input so we can also detect Ctrl-C cancellation
+            while (!Console.KeyAvailable)
+            {
+                if (m_interruptExecutingCommand?.IsCancellationRequested == true)
+                {
+                    ClearPagerPrompt();
+                    return false;
+                }
+                Thread.Sleep(50);
+            }
+
+            ConsoleKeyInfo key = Console.ReadKey(true);
+            ClearPagerPrompt();
+
+            switch (key.Key)
+            {
+                case ConsoleKey.Q:
+                case ConsoleKey.Escape:
+                    return false;
+
+                case ConsoleKey.Enter:
+                    // Show one more line before pausing again
+                    m_linesWrittenSinceCommand--;
+                    break;
+
+                case ConsoleKey.A:
+                    m_pagingDisabledForCommand = true;
+                    break;
+
+                default:
+                    // Space or any other key advances one page
+                    m_linesWrittenSinceCommand = 0;
+                    break;
+            }
+            return true;
+        }
+
+        private static void ClearPagerPrompt()
+        {
+            int width = Console.WindowWidth;
+            Console.Write("\r" + (width > 0 ? new string(' ', width - 1) : "") + "\r");
+        }
+
+        private static int GetPageSize()
+        {
+            try
+            {
+                int height = Console.WindowHeight;
+                return height > 2 ? height - 1 : 0;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
 
         /// <summary>
@@ -246,6 +327,8 @@ namespace Microsoft.Diagnostics.Repl
             if (m_commandExecuting == 0)
             {
                 ClearLine();
+                m_linesWrittenSinceCommand = 0;
+                m_pagingDisabledForCommand = false;
             }
             m_commandExecuting++;
         }
