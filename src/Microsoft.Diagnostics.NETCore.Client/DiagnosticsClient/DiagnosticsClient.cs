@@ -306,6 +306,24 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </returns>
         public static IEnumerable<int> GetPublishedProcesses()
         {
+            return GetPublishedProcesses(Array.Empty<string>());
+        }
+
+        /// <summary>
+        /// Get all the active processes that can be attached to, searching additional
+        /// directories for diagnostic sockets beyond the default IPC root path.
+        /// This is useful for discovering processes running in macOS sandboxed
+        /// environments where diagnostic sockets are placed in application group
+        /// container directories rather than the default temp directory.
+        /// </summary>
+        /// <param name="additionalSearchPaths">
+        /// Additional directory paths to search for diagnostic sockets.
+        /// </param>
+        /// <returns>
+        /// IEnumerable of all the active process IDs.
+        /// </returns>
+        public static IEnumerable<int> GetPublishedProcesses(IEnumerable<string> additionalSearchPaths)
+        {
             static IEnumerable<int> GetAllPublishedProcesses(string[] files)
             {
                 foreach (string port in files)
@@ -335,10 +353,35 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     yield return processId;
                 }
             }
+
+            static string[] GetFilesFromDirectory(string path)
+            {
+                try
+                {
+                    if (Directory.Exists(path))
+                    {
+                        return Directory.GetFiles(path);
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (IOException) { }
+
+                return Array.Empty<string>();
+            }
+
             try
             {
-                string[] files = Directory.GetFiles(PidIpcEndpoint.IpcRootPath);
-                return GetAllPublishedProcesses(files).Distinct();
+                List<string> allFiles = new(Directory.GetFiles(PidIpcEndpoint.IpcRootPath));
+
+                foreach (string searchPath in additionalSearchPaths)
+                {
+                    if (!string.IsNullOrEmpty(searchPath))
+                    {
+                        allFiles.AddRange(GetFilesFromDirectory(searchPath));
+                    }
+                }
+
+                return GetAllPublishedProcesses(allFiles.ToArray()).Distinct();
             }
             catch (UnauthorizedAccessException ex)
             {
