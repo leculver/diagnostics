@@ -1036,7 +1036,7 @@ void DisplayFields(CLRDATA_ADDRESS cdaMT, DacpMethodTableData *pMTD, DacpMethodT
     if (bFirst)
     {
         ExtOutIndent();
-        ExtOut("%" POINTERSIZE "s %8s %8s %20s %4s %8s %" POINTERSIZE "s %s\n",
+        ExtOut("%" POINTERSIZE "s %8s %8s %40s %4s %8s %" POINTERSIZE "s %s\n",
             "MT", "Field", "Offset", "Type", "VT", "Attr", "Value", "Name");
         numInstanceFields = 0;
     }
@@ -1107,7 +1107,7 @@ void DisplayFields(CLRDATA_ADDRESS cdaMT, DacpMethodTableData *pMTD, DacpMethodT
             vFieldDesc.Type == ELEMENT_TYPE_CLASS) && vFieldDesc.MTOfType)
         {
             NameForMT_s((DWORD_PTR)vFieldDesc.MTOfType, g_mdName, mdNameLen);
-            ExtOut("%20.20S ", FormatTypeName(g_mdName, 20));
+            ExtOut("%40.40S ", FormatTypeName(g_mdName, 40));
         }
         else
         {
@@ -1115,7 +1115,7 @@ void DisplayFields(CLRDATA_ADDRESS cdaMT, DacpMethodTableData *pMTD, DacpMethodT
             {
                 // Get the name from Metadata!!!
                 NameForToken_s(TokenFromRid(vFieldDesc.TokenOfType, mdtTypeDef), pImport, g_mdName, mdNameLen, false);
-                ExtOut("%20.20S ", FormatTypeName(g_mdName, 20));
+                ExtOut("%40.40S ", FormatTypeName(g_mdName, 40));
             }
             else
             {
@@ -1123,7 +1123,7 @@ void DisplayFields(CLRDATA_ADDRESS cdaMT, DacpMethodTableData *pMTD, DacpMethodT
                 // For example, E_T_STRING in field desc will be E_T_CLASS. In minidump's case, we won't have
                 // the method table for it.
                 ComposeName_s(vFieldDesc.Type != vFieldDesc.sigType ? vFieldDesc.sigType : vFieldDesc.Type, ElementName, ARRAY_SIZE(ElementName));
-                ExtOut("%20.20s ", ElementName);
+                ExtOut("%40.40s ", ElementName);
             }
         }
 
