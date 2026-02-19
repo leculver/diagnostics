@@ -5655,7 +5655,7 @@ public:
                     DacpGetModuleAddress dgma;
                     if (SUCCEEDED(dgma.Request(pMod)))
                     {
-                        g_bpoints.UpdateKnownCodeAddress(TO_TADDR(dgma.ModulePtr), nativeCodeLocation);
+                        g_bpoints.Update(TO_TADDR(dgma.ModulePtr), FALSE);
                     }
                     else
                     {
