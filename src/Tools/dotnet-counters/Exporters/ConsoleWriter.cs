@@ -290,13 +290,16 @@ namespace Microsoft.Diagnostics.Tools.Counters.Exporters
 
         public void ToggleStatus(bool pauseCmdSet)
         {
-            if (_paused == pauseCmdSet)
+            lock (_lock)
             {
-                return;
-            }
+                if (_paused == pauseCmdSet)
+                {
+                    return;
+                }
 
-            _paused = pauseCmdSet;
-            UpdateStatus();
+                _paused = pauseCmdSet;
+                UpdateStatus();
+            }
         }
 
         public void CounterPayloadReceived(CounterPayload payload, bool pauseCmdSet)

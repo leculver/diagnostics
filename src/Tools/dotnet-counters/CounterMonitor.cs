@@ -562,10 +562,12 @@ namespace Microsoft.Diagnostics.Tools.Counters
                     else if (cmd == ConsoleKey.P)
                     {
                         _pauseCmdSet = true;
+                        _renderer.ToggleStatus(_pauseCmdSet);
                     }
                     else if (cmd == ConsoleKey.R)
                     {
                         _pauseCmdSet = false;
+                        _renderer.ToggleStatus(_pauseCmdSet);
                     }
                 }
             }
