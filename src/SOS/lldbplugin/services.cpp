@@ -2110,12 +2110,8 @@ RuntimeLoadedBreakpointCallback(
     g_services->SetCurrentProcess(savedProcess);
     g_services->SetCurrentThread(savedThread);
 
-    // Clear the breakpoint
-    if (g_runtimeLoadedBp.IsValid())
-    {
-        process.GetTarget().BreakpointDelete(g_runtimeLoadedBp.GetID());
-        g_runtimeLoadedBp = lldb::SBBreakpoint();
-    }
+    // Keep g_runtimeLoadedBp alive so it fires again on process restart,
+    // re-registering module load notifications and exception callbacks.
 
     // Continue the process
     if (result)
