@@ -48,12 +48,33 @@ void ARM64Machine::IsReturnAddress(TADDR retAddr, TADDR* whereCalled) const
     DWORD previousInstr;
     move_xp(previousInstr, retAddr - sizeof(previousInstr));
 
-    // ARM64TODO: needs to be implemented for jump stubs for ngen case
-
     if ((previousInstr & 0xfffffc1f) == 0xd63f0000)
     {
         // BLR <reg>
         *whereCalled = 0xffffffff;
+
+        // Try to resolve the target through a jump stub pattern used by NGen/R2R:
+        //   ldr xN, [pc, #offset]   (at retAddr - 8)
+        //   blr xN                  (at retAddr - 4)
+        unsigned int blrReg = (previousInstr >> 5) & 0x1f;
+        DWORD prevPrevInstr;
+        if (SUCCEEDED(MOVE(prevPrevInstr, retAddr - 2 * sizeof(DWORD))))
+        {
+            // LDR Xt, literal: 0101 1000 iiii iiii iiii iiii iiit tttt
+            if ((prevPrevInstr & 0xff000000) == 0x58000000 &&
+                (prevPrevInstr & 0x1f) == blrReg)
+            {
+                DWORD imm19 = (prevPrevInstr >> 5) & 0x7ffff;
+                // offset = SignExtend(imm19:'00', 64)
+                INT64 offset = ((INT64)imm19 << 45) >> 43;
+                TADDR ldrPC = retAddr - 2 * sizeof(DWORD);
+                TADDR targetAddr;
+                if (SUCCEEDED(MOVE(targetAddr, ldrPC + offset)))
+                {
+                    *whereCalled = targetAddr;
+                }
+            }
+        }
     }
     else if ((previousInstr & 0xfc000000) == 0x94000000)
     {
@@ -63,6 +84,40 @@ void ARM64Machine::IsReturnAddress(TADDR retAddr, TADDR* whereCalled) const
         INT64 offset = ((INT64)imm26 << 38) >> 36;
         *whereCalled = retAddr - 4 + offset;
     }
+}
+
+// Return 0 for non-managed call.  Otherwise return MD address.
+static TADDR MDForCall (TADDR callee)
+{
+    JITTypes jitType;
+    DWORD_PTR methodDesc;
+    DWORD_PTR gcinfoAddr;
+
+    // Check if callee points directly to JIT-compiled managed code.
+    IP2MethodDesc (callee, methodDesc, jitType, gcinfoAddr);
+    if (methodDesc)
+        return methodDesc;
+
+    // Follow a jump stub if present:
+    //   ldr xN, [pc, #offset]
+    //   br xN
+    DWORD instr[2];
+    if (SUCCEEDED(MOVE(instr[0], callee)) &&
+        (instr[0] & 0xff000000) == 0x58000000 &&
+        SUCCEEDED(MOVE(instr[1], callee + 4)) &&
+        instr[1] == (DWORD)(0xD61F0000 | ((instr[0] & 0x1f) << 5)))
+    {
+        DWORD imm19 = (instr[0] >> 5) & 0x7ffff;
+        INT64 offset = ((INT64)imm19 << 45) >> 43;
+        TADDR target;
+        if (SUCCEEDED(MOVE(target, callee + offset)))
+        {
+            IP2MethodDesc (target, methodDesc, jitType, gcinfoAddr);
+            return methodDesc;
+        }
+    }
+
+    return 0;
 }
 
 // Determine if a value is MT/MD/Obj
@@ -109,7 +164,13 @@ static void HandleValue(TADDR value)
     }
 
     // A call to managed code?
-    // ARM64TODO: not (yet) implemented. perhaps we don't need it at all.
+    TADDR methodDesc = MDForCall(value);
+    if (methodDesc)
+    {
+        NameForMD_s (methodDesc, g_mdName,mdNameLen);
+        ExtOut (" (code for MD: %S)", g_mdName);
+        return;
+    }
     
     // Random symbol.
     char Symbol[1024];
@@ -155,6 +216,8 @@ void ARM64Machine::Unassembly (
     char *szConstant = NULL;
     ULONG ilPosition = 0;
     UINT ilIndentCount = 0;
+    TADDR adrpPageAddr = 0;
+    BOOL adrpSet = FALSE;
 
 
     while(PC < PCEnd)
@@ -336,10 +399,41 @@ void ARM64Machine::Unassembly (
                 INT_PTR value;
                 GetValueFromExpr(szConstant, value);
                 HandleValue(value);
+                adrpSet = FALSE;
             }
-
-
-            // ARM64TODO: we could possibly handle adr(p)/ldr pair too.
+            else if (!strncmp(ptr, "adrp ", 5))
+            {
+                // Track the ADRP page address for resolution with a subsequent LDR/ADD.
+                // adrp sets bits [63:12] of the target address; the next instruction adds the page offset.
+                char *szAddr = strchr(ptr, '#');
+                if (szAddr != NULL)
+                {
+                    INT_PTR page;
+                    GetValueFromExpr(szAddr, page);
+                    adrpPageAddr = (TADDR)page;
+                    adrpSet = TRUE;
+                }
+                else
+                {
+                    adrpSet = FALSE;
+                }
+            }
+            else if (adrpSet && (!strncmp(ptr, "ldr ", 4) || !strncmp(ptr, "add ", 4)))
+            {
+                // Resolve adrp/ldr or adrp/add pair to get the final address.
+                char *szOffset = strchr(ptr, '#');
+                if (szOffset != NULL)
+                {
+                    INT_PTR offset;
+                    GetValueFromExpr(szOffset, offset);
+                    HandleValue(adrpPageAddr + (TADDR)offset);
+                }
+                adrpSet = FALSE;
+            }
+            else
+            {
+                adrpSet = FALSE;
+            }
         }
                 
     }
