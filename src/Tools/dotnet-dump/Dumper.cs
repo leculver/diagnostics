@@ -5,6 +5,7 @@ using System;
 using System.CommandLine;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Internal.Common.Utils;
 
@@ -35,6 +36,11 @@ namespace Microsoft.Diagnostics.Tools.Dump
         {
             try
             {
+                if (ProcessLauncher.Launcher.HasChildProc)
+                {
+                    return CollectFromChildProcess(stdOutput, stdError, output, diag, crashreport, type, diagnosticPort);
+                }
+
                 CommandUtils.ResolveProcessForAttach(processId, name, diagnosticPort, string.Empty, out int resolvedProcessId);
                 processId = resolvedProcessId;
 
@@ -142,6 +148,76 @@ namespace Microsoft.Diagnostics.Tools.Dump
                     stdError.WriteLine($"{ex.Message}");
                 }
                 return -1;
+            }
+
+            stdOutput.WriteLine($"Complete");
+            return 0;
+        }
+
+        private int CollectFromChildProcess(TextWriter stdOutput, TextWriter stdError, string output, bool diag, bool crashreport, DumpTypeOption type, string diagnosticPort)
+        {
+            DiagnosticsClientBuilder builder = new("dotnet-dump", 10);
+            using CancellationTokenSource cts = new();
+            using DiagnosticsClientHolder holder = builder.Build(cts.Token, 0, diagnosticPort, showChildIO: true, printLaunchCommand: true).GetAwaiter().GetResult();
+            if (holder == null)
+            {
+                stdError.WriteLine("[ERROR] Failed to start child process.");
+                return -1;
+            }
+
+            int childPid = holder.EndpointInfo.ProcessId;
+            stdOutput.WriteLine($"Process launched. PID: {childPid}");
+
+            if (output == null)
+            {
+                string timestamp = $"{DateTime.Now:yyyyMMdd_HHmmss}";
+                output = Path.Combine(Directory.GetCurrentDirectory(), RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"dump_{timestamp}.dmp" : $"core_{timestamp}");
+            }
+
+            output = Path.GetFullPath(output);
+
+            string dumpTypeMessage = type switch
+            {
+                DumpTypeOption.Full => "full",
+                DumpTypeOption.Heap => "dump with heap",
+                DumpTypeOption.Mini => "dump",
+                DumpTypeOption.Triage => "triage dump",
+                _ => "dump"
+            };
+            stdOutput.WriteLine($"Writing {dumpTypeMessage} to {output}");
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (crashreport)
+                {
+                    Console.WriteLine("Crash reports not supported on Windows.");
+                    return -1;
+                }
+
+                Windows.CollectDump(childPid, output, type);
+            }
+            else
+            {
+                DumpType dumpType = type switch
+                {
+                    DumpTypeOption.Full => DumpType.Full,
+                    DumpTypeOption.Heap => DumpType.WithHeap,
+                    DumpTypeOption.Mini => DumpType.Normal,
+                    DumpTypeOption.Triage => DumpType.Triage,
+                    _ => DumpType.Normal
+                };
+
+                WriteDumpFlags flags = WriteDumpFlags.None;
+                if (diag)
+                {
+                    flags |= WriteDumpFlags.LoggingEnabled;
+                }
+                if (crashreport)
+                {
+                    flags |= WriteDumpFlags.CrashReportEnabled;
+                }
+
+                holder.Client.WriteDump(dumpType, output, flags);
             }
 
             stdOutput.WriteLine($"Complete");

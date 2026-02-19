@@ -2,11 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Internal.Common;
 using Microsoft.Internal.Common.Commands;
+using Microsoft.Internal.Common.Utils;
 
 namespace Microsoft.Diagnostics.Tools.Dump
 {
@@ -21,12 +24,23 @@ namespace Microsoft.Diagnostics.Tools.Dump
                 ProcessStatusCommandHandler.ProcessStatusCommand("Lists the dotnet processes that dumps can be collected from.")
             };
 
-            return rootCommand.Parse(args).Invoke();
+            ParseResult parseResult = rootCommand.Parse(args);
+            string parsedCommandName = parseResult.CommandResult.Command.Name;
+            if (parsedCommandName == "collect")
+            {
+                IReadOnlyCollection<string> unparsedTokens = parseResult.UnmatchedTokens;
+                if (unparsedTokens.Count > 0)
+                {
+                    ProcessLauncher.Launcher.PrepareChildProcess(args);
+                }
+            }
+
+            return parseResult.Invoke();
         }
 
         private static Command CollectCommand()
         {
-            Command command = new(name: "collect", description: "Capture dumps from a process")
+            Command command = new(name: "collect", description: "Capture dumps from a process. Append -- to the collect command to run a command and collect a dump from it immediately.")
             {
                 ProcessIdOption, OutputOption, DiagnosticLoggingOption, CrashReportOption, TypeOption, ProcessNameOption, DiagnosticPortOption
             };
