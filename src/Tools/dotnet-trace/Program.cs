@@ -19,6 +19,7 @@ namespace Microsoft.Diagnostics.Tools.Trace
             {
                 CollectCommandHandler.CollectCommand(),
                 CollectLinuxCommandHandler.CollectLinuxCommand(),
+                MonitorCommandHandler.MonitorCommand(),
                 ProcessStatusCommandHandler.ProcessStatusCommand("Lists the dotnet processes that traces can be collected from."),
                 ListProfilesCommandHandler.ListProfilesCommand(),
                 ConvertCommandHandler.ConvertCommand(),
