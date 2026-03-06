@@ -210,6 +210,44 @@ namespace Microsoft.Diagnostics.Tools.Trace
             console.AssertSanitizedLinesEqual(null, expected);
         }
 
+        [ConditionalFact(nameof(IsCollectLinuxSupported))]
+        public void CollectLinuxCommand_WarnsAndProceeds_WhenIpcConnectionFails()
+        {
+            // PID 1 (init/systemd) exists on Linux but is not a .NET process,
+            // so DiagnosticsClient.GetProcessInfo() will throw. The tool should
+            // warn and proceed to trace collection instead of failing.
+            MockConsole console = new(200, 30, _outputHelper);
+            var handler = new CollectLinuxCommandHandler(console);
+            bool recordTraceInvoked = false;
+            handler.RecordTraceInvoker = (cmd, len, cb) => {
+                recordTraceInvoked = true;
+                cb(3, IntPtr.Zero, UIntPtr.Zero);
+                return 0;
+            };
+
+            int exitCode = handler.CollectLinux(TestArgs(processId: 1));
+
+            Assert.Equal((int)ReturnCode.Ok, exitCode);
+            Assert.True(recordTraceInvoked, "RecordTrace should have been invoked despite IPC connection failure");
+            string allText = string.Join("\n", console.Lines);
+            Assert.Contains("[WARNING]", allText);
+            Assert.Contains("Unable to verify collect-linux support", allText);
+        }
+
+        [ConditionalFact(nameof(IsCollectLinuxSupported))]
+        public void CollectLinuxCommand_Probe_ReportsUnknown_WhenIpcConnectionFails()
+        {
+            // When probing a process that can't be connected to via IPC,
+            // the probe should report "could not be probed" instead of crashing.
+            MockConsole console = new(200, 2000, _outputHelper);
+            var args = TestArgs(processId: 1, probe: true, output: new FileInfo(CommonOptions.DefaultTraceName));
+            int exitCode = Run(args, console);
+
+            Assert.Equal((int)ReturnCode.Ok, exitCode);
+            string allText = string.Join("\n", console.Lines);
+            Assert.Contains("could not be probed", allText);
+        }
+
         [ConditionalFact(nameof(IsCollectLinuxNotSupported))]
         public void CollectLinuxCommand_NotSupported_OnNonLinux()
         {
