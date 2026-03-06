@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="$(SrcDir)Microsoft.Diagnostics.DebugServices.Implementation/Microsoft.Diagnostics.DebugServices.Implementation.csproj" />
     <ProjectReference Include="$(SrcDir)Microsoft.Diagnostics.DebugServices/Microsoft.Diagnostics.DebugServices.csproj" />
+    <ProjectReference Include="$(SrcDir)Microsoft.Diagnostics.ExtensionCommands/Microsoft.Diagnostics.ExtensionCommands.csproj" />
     <ProjectReference Include="$(SrcDir)Microsoft.Diagnostics.TestHelpers/Microsoft.Diagnostics.TestHelpers.csproj" />
     <ProjectReference Include="$(SrcDir)SOS/SOS.Extensions/SOS.Extensions.csproj" />
   </ItemGroup>

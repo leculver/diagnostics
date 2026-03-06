@@ -29,6 +29,9 @@ namespace Microsoft.Diagnostics.ExtensionCommands
         [Option(Name = "-stat", Aliases = new string[] { "-summary" }, Help = "Only print object statistics, not the list of all objects.")]
         public bool Stat { get; set; }
 
+        [Option(Name = "-includeWeakRefs", Aliases = new string[] { "-weakrefs" }, Help = "Include System.WeakReference objects in the output. By default, these are filtered out because they are special-cased by the GC and won't actually be finalized.")]
+        public bool IncludeWeakRefs { get; set; }
+
         [ServiceImport]
         public LiveObjectService LiveObjects { get; set; }
 
@@ -81,8 +84,31 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             IEnumerable<ClrObject> objects = EnumerateFinalizableObjects(AllReady, mt);
             DumpHeapService.DisplayKind displayKind = Short ? DumpHeapService.DisplayKind.Short : DumpHeapService.DisplayKind.Normal;
 
+            // By default, filter out WeakReference objects since they are special-cased by the GC
+            // and won't actually be finalized. When -mt is specified, the user explicitly chose a
+            // type so we respect that. See https://github.com/dotnet/diagnostics/issues/5742
+            int weakRefFilteredCount = 0;
+            if (!IncludeWeakRefs && mt == 0)
+            {
+                objects = objects.Where(obj =>
+                {
+                    if (IsWeakReferenceType(obj.Type))
+                    {
+                        weakRefFilteredCount++;
+                        return false;
+                    }
+
+                    return true;
+                });
+            }
+
             DumpHeap.PrintHeap(objects, displayKind, Stat, printFragmentation: false);
 
+            if (weakRefFilteredCount > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"Filtered {weakRefFilteredCount:n0} weak reference(s) that won't actually be finalized. Use -includeWeakRefs to include them.");
+            }
         }
 
         [HelpInvoke]
@@ -144,6 +170,11 @@ The arguments in detail:
           cleaned up, and on any RuntimeCallableWrappers (RCWs) that await 
           cleanup.  Both of these data structures are cached and cleaned up by 
           the finalizer thread when it gets a chance to run.
+
+Note: By default, System.WeakReference and System.WeakReference<T> objects are
+filtered from the output. Although these types are registered for finalization,
+the GC treats them specially and their finalizers never actually run. Use
+-includeWeakRefs to include them in the output.
 ";
         private IEnumerable<ClrObject> EnumerateFinalizableObjects(bool allReady, ulong mt)
         {
@@ -192,6 +223,37 @@ The arguments in detail:
 
                 yield return obj;
             }
+        }
+
+        /// <summary>
+        /// Returns true if the given type is a System.WeakReference or System.WeakReference&lt;T&gt;.
+        /// These types have finalizers declared but the GC special-cases them: their finalizers never
+        /// actually run. Instead the GC handles cleanup directly. Note that derived types of
+        /// System.WeakReference ARE finalized normally, so we only match the exact base type.
+        /// System.WeakReference&lt;T&gt; is sealed so it cannot have derived types.
+        /// </summary>
+        private static bool IsWeakReferenceType(ClrType type) => IsWeakReferenceTypeName(type?.Name);
+
+        internal static bool IsWeakReferenceTypeName(string typeName)
+        {
+            if (typeName is null)
+            {
+                return false;
+            }
+
+            // Exact match for non-generic WeakReference (derived types DO get finalized)
+            if (typeName == "System.WeakReference")
+            {
+                return true;
+            }
+
+            // Generic WeakReference<T> - ClrMD formats this as "System.WeakReference<SomeType>"
+            if (typeName.StartsWith("System.WeakReference<", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private void PrintSyncBlockCleanupData()
