@@ -70,18 +70,19 @@ namespace Microsoft.Diagnostics.ExtensionCommands
 
             bool isWildcard = moduleName == "*";
 
-            IEnumerable<ClrModule> modules;
+            List<ClrModule> modules;
             if (isWildcard)
             {
-                modules = Runtime.EnumerateModules();
+                modules = Runtime.EnumerateModules().ToList();
             }
             else
             {
-                modules = Runtime.EnumerateModules().Where(m => MatchesModuleName(m, moduleName));
+                modules = Runtime.EnumerateModules().Where(m => MatchesModuleName(m, moduleName)).ToList();
             }
 
             int matchCount = 0;
             int nonMatchCount = 0;
+            bool anyTypeFound = false;
 
             foreach (ClrModule module in modules)
             {
@@ -90,10 +91,26 @@ namespace Microsoft.Diagnostics.ExtensionCommands
                 string fileName = GetModuleFileName(module);
                 bool foundInModule = SearchModule(module, itemName, isWildcard, fileName, ref matchCount);
 
-                if (!foundInModule && isWildcard)
+                if (foundInModule)
+                {
+                    anyTypeFound = true;
+                }
+                else if (isWildcard)
                 {
                     nonMatchCount++;
                 }
+            }
+
+            // Heap-based fallback: constructed generic types (e.g., List<string>) are not
+            // in the TypeDef map and won't be found by module-based search. Walk the GC heap
+            // to discover them from live object method tables.
+            if (!anyTypeFound)
+            {
+                HashSet<ulong> targetModuleAddresses = isWildcard
+                    ? null
+                    : new HashSet<ulong>(modules.Select(m => m.Address));
+
+                anyTypeFound = SearchHeapForConstructedTypes(targetModuleAddresses, itemName, ref matchCount);
             }
 
             if (isWildcard && nonMatchCount > 0)
@@ -272,6 +289,99 @@ namespace Microsoft.Diagnostics.ExtensionCommands
             return MatchKind.None;
         }
 
+        /// <summary>
+        /// Searches the GC heap for constructed generic types matching the given name.
+        /// Constructed generic types (e.g., List&lt;string&gt;) have their own method tables
+        /// but are not present in the module TypeDef map. This method discovers them by
+        /// walking live heap objects and collecting unique types by method table.
+        /// </summary>
+        /// <param name="targetModuleAddresses">
+        /// If non-null, only types from these modules are matched. Null means search all modules.
+        /// </param>
+        /// <param name="itemName">The type or member name to search for.</param>
+        /// <param name="matchCount">Running count of total matches (updated in place).</param>
+        /// <returns>True if any match was found on the heap.</returns>
+        private bool SearchHeapForConstructedTypes(HashSet<ulong> targetModuleAddresses, string itemName, ref int matchCount)
+        {
+            string normalizedName = itemName.Replace('/', '+');
+            HashSet<ulong> seenMethodTables = new();
+            bool found = false;
+
+            foreach (ClrObject obj in Runtime.Heap.EnumerateObjects())
+            {
+                Console.CancellationToken.ThrowIfCancellationRequested();
+
+                if (!obj.IsValid)
+                {
+                    continue;
+                }
+
+                ClrType type = obj.Type;
+                if (type == null || type.MethodTable == 0)
+                {
+                    continue;
+                }
+
+                // Only examine each unique method table once
+                if (!seenMethodTables.Add(type.MethodTable))
+                {
+                    continue;
+                }
+
+                // Filter by target module when a specific module was requested
+                if (targetModuleAddresses != null && (type.Module == null || !targetModuleAddresses.Contains(type.Module.Address)))
+                {
+                    continue;
+                }
+
+                MatchKind matchKind = GetMatchKind(type, normalizedName, out ClrMethod matchedMethod, out ClrField matchedField);
+                if (matchKind == MatchKind.None)
+                {
+                    continue;
+                }
+
+                if (!found)
+                {
+                    if (matchCount > 0)
+                    {
+                        WriteLine("--------------------------------------");
+                    }
+
+                    WriteLine("Searching heap for constructed generic types...");
+                }
+                else
+                {
+                    WriteLine("-----------------------");
+                }
+
+                found = true;
+
+                ClrModule module = type.Module;
+                if (module != null)
+                {
+                    string fileName = GetModuleFileName(module);
+                    PrintModuleHeader(module, fileName);
+                }
+
+                switch (matchKind)
+                {
+                    case MatchKind.Type:
+                        PrintTypeInfo(type);
+                        break;
+                    case MatchKind.Method:
+                        PrintMethodInfo(matchedMethod);
+                        break;
+                    case MatchKind.Field:
+                        PrintFieldInfo(type, matchedField);
+                        break;
+                }
+
+                matchCount++;
+            }
+
+            return found;
+        }
+
         private void PrintUsage()
         {
             WriteLine("Usage: !name2ee module_name item_name");
@@ -427,6 +537,10 @@ To get the proper type name, browse the module with the IL disassembler
 (ildasm.exe). You can also pass * as the module name parameter to search all
 loaded managed modules. When using the wildcard, only matching modules are
 displayed and non-matching modules are summarized at the end.
+
+If the type is not found in the module metadata (e.g., a constructed generic
+type like List<string>), the command will search the GC heap for matching
+types that have live object instances.
 
     {prompt}name2ee mscorlib.dll System.String.ToString
     Module:      00007ffe65744000
