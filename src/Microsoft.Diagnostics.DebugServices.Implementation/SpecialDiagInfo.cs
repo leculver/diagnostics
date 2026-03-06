@@ -129,9 +129,18 @@ namespace Microsoft.Diagnostics.DebugServices.Implementation
                 if (!diagInfo.HasDiagnosticInfo())
                 {
                     console.WriteWarning(
-                        "WARNING: This dump doesn't contain memory the .NET runtime's dump functionality usually adds. " +
-                        "System dumps may be missing memory regions required by SOS commands. " +
-                        "For best results, collect dumps using the appropriate tool for your scenario:  https://aka.ms/dotnet-dump-collection" + Environment.NewLine);
+                        "WARNING: This dump was not collected by the .NET runtime's createdump utility." + Environment.NewLine +
+                        "  System-generated dumps (e.g. from the kernel core_pattern handler) typically lack:" + Environment.NewLine +
+                        "    - The .NET diagnostics header page (needed for crash info and NativeAOT analysis)" + Environment.NewLine +
+                        "    - Module header pages (file-backed memory excluded by default coredump_filter)" + Environment.NewLine +
+                        "  This may cause:" + Environment.NewLine +
+                        "    - Missing or incomplete stack traces" + Environment.NewLine +
+                        "    - Inability to resolve managed method names" + Environment.NewLine +
+                        "    - Failure to download matching symbols from the symbol server" + Environment.NewLine +
+                        "  To collect dumps that include all .NET debugging data, use one of:" + Environment.NewLine +
+                        "    - DOTNET_DbgEnableMiniDump=1 with DOTNET_DbgMiniDumpType=4 (environment variables)" + Environment.NewLine +
+                        "    - dotnet-dump collect (https://aka.ms/dotnet-dump-collection)" + Environment.NewLine +
+                        "  If you must use system dumps, set coredump_filter to 0x3F to include file-backed pages." + Environment.NewLine);
                 }
             }
             catch (Exception ex)

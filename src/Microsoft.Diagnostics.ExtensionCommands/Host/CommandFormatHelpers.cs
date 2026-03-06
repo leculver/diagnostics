@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.DebugServices;
@@ -55,7 +57,58 @@ namespace Microsoft.Diagnostics.ExtensionCommands
                 else
                 {
                     command.Console.WriteLine(" <NONE>");
+                    if (target.IsDump)
+                    {
+                        command.Console.WriteLineWarning($"{indent}    This dump appears to be a system-collected dump (not created by createdump).");
+                        DisplayModuleHeaderStatus(command, indent + "    ");
+                    }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Checks and displays how many modules have readable headers in the dump.
+        /// Helps diagnose system-collected dumps where file-backed pages are missing.
+        /// </summary>
+        private static void DisplayModuleHeaderStatus(CommandBase command, string indent)
+        {
+            try
+            {
+                IModuleService moduleService = command.Services.GetService<IModuleService>();
+                if (moduleService == null)
+                {
+                    return;
+                }
+
+                int totalModules = 0;
+                int modulesWithBuildId = 0;
+                int modulesWithoutBuildId = 0;
+
+                foreach (IModule module in moduleService.EnumerateModules())
+                {
+                    totalModules++;
+                    if (!module.BuildId.IsDefaultOrEmpty)
+                    {
+                        modulesWithBuildId++;
+                    }
+                    else
+                    {
+                        modulesWithoutBuildId++;
+                    }
+                }
+
+                command.Console.WriteLine($"{indent}Module header status: {modulesWithBuildId}/{totalModules} modules have build IDs");
+                if (modulesWithoutBuildId > 0)
+                {
+                    command.Console.WriteLineWarning(
+                        $"{indent}{modulesWithoutBuildId} module(s) missing build IDs - symbol resolution and stack traces may be degraded.");
+                    command.Console.WriteLineWarning(
+                        $"{indent}To include file-backed pages in system dumps, set coredump_filter to 0x3F.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError($"DisplayModuleHeaderStatus: {ex.Message}");
             }
         }
 
