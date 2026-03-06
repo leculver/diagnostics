@@ -29,6 +29,20 @@ namespace Microsoft.Diagnostics.NETCore.Client
         {
         }
 
+        /// <summary>
+        /// Creates a DiagnosticsClient that connects to a specific diagnostic endpoint address.
+        /// Use this with addresses from <see cref="GetPublishedEndpoints"/> to connect to
+        /// a specific endpoint in cross-container scenarios where PID alone is ambiguous.
+        /// </summary>
+        /// <param name="endpointAddress">
+        /// The endpoint address (e.g., a Unix domain socket path or named pipe path).
+        /// Parsed via <see cref="IpcEndpointConfig.Parse"/> with connect semantics.
+        /// </param>
+        public DiagnosticsClient(string endpointAddress) :
+            this(IpcEndpointConfig.Parse(endpointAddress + ",connect"))
+        {
+        }
+
         internal DiagnosticsClient(IpcEndpointConfig config) :
             this(new DiagnosticPortIpcEndpoint(config))
         {
@@ -423,6 +437,136 @@ namespace Microsoft.Diagnostics.NETCore.Client
             }
 
             return discoveredPids;
+        }
+
+        /// <summary>
+        /// Get all discovered diagnostic endpoints, including multiple endpoints for the same PID.
+        /// Unlike <see cref="GetPublishedProcesses"/>, which returns only distinct PIDs and filters
+        /// by local process existence, this method returns every discovered endpoint address. This
+        /// is important for cross-container scenarios where:
+        /// <list type="bullet">
+        /// <item>Multiple containers may share a temp directory and have overlapping PIDs</item>
+        /// <item>A PID from one container's namespace may not exist (or may refer to an unrelated
+        /// process) in the host namespace</item>
+        /// <item>Timestamp-based disambiguation is insufficient when N containers all have PID 1</item>
+        /// </list>
+        /// Callers should use the returned <see cref="ProcessEndpointInfo.EndpointAddress"/> to
+        /// connect via <see cref="DiagnosticsClient(string)"/> or
+        /// <see cref="DiagnosticsClient.GetProcessInfo"/> for accurate process identity.
+        /// </summary>
+        /// <returns>
+        /// All discovered diagnostic endpoints with their PID and endpoint address.
+        /// </returns>
+        public static IEnumerable<ProcessEndpointInfo> GetPublishedEndpoints()
+        {
+            List<ProcessEndpointInfo> endpoints = new();
+
+            endpoints.AddRange(GetLocalPublishedEndpoints());
+            endpoints.AddRange(GetProcPublishedEndpoints());
+
+            return endpoints;
+        }
+
+        /// <summary>
+        /// Discovers all diagnostic endpoints in the local IPC root path.
+        /// Returns all matching endpoints without filtering by local PID existence,
+        /// since the PIDs may belong to processes in other containers or namespaces.
+        /// </summary>
+        private static IEnumerable<ProcessEndpointInfo> GetLocalPublishedEndpoints()
+        {
+            List<ProcessEndpointInfo> endpoints = new();
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(PidIpcEndpoint.IpcRootPath);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                if (PidIpcEndpoint.IpcRootPath.StartsWith(@"\\.\pipe", StringComparison.Ordinal))
+                {
+                    throw new DiagnosticsClientException($"Enumerating {PidIpcEndpoint.IpcRootPath} is not authorized", ex);
+                }
+
+                throw;
+            }
+
+            foreach (string port in files)
+            {
+                string fileName = new FileInfo(port).Name;
+                Match match = Regex.Match(fileName, PidIpcEndpoint.DiagnosticsPortPattern);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                string group = match.Groups[1].Value;
+                if (!int.TryParse(group, NumberStyles.Integer, CultureInfo.InvariantCulture, out int processId))
+                {
+                    continue;
+                }
+
+                endpoints.Add(new ProcessEndpointInfo(processId, port));
+            }
+
+            return endpoints;
+        }
+
+        /// <summary>
+        /// Discovers diagnostic endpoints via /proc for cross-namespace and alternate TMPDIR processes.
+        /// Linux-only; returns empty on other platforms.
+        /// </summary>
+        private static IEnumerable<ProcessEndpointInfo> GetProcPublishedEndpoints()
+        {
+            List<ProcessEndpointInfo> endpoints = new();
+
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                return endpoints;
+            }
+
+            IEnumerable<string> procEntries;
+            try
+            {
+                procEntries = Directory.EnumerateDirectories(PidIpcEndpoint.ProcPath);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return endpoints;
+            }
+
+            foreach (string procEntry in procEntries)
+            {
+                if (!int.TryParse(Path.GetFileName(procEntry), NumberStyles.Integer, CultureInfo.InvariantCulture, out int hostPid))
+                {
+                    continue;
+                }
+
+                if (!PidIpcEndpoint.CheckProcessExists(hostPid))
+                {
+                    continue;
+                }
+
+                string targetTmpDir = PidIpcEndpoint.GetProcessTmpDir(hostPid, out _);
+
+                if (PidIpcEndpoint.TryGetNamespacePid(hostPid, out int nsPid))
+                {
+                    string crossNsDir = Path.Combine(PidIpcEndpoint.GetProcessRootPath(hostPid), targetTmpDir.TrimStart(Path.DirectorySeparatorChar));
+                    foreach (string address in PidIpcEndpoint.ResolveAllAddresses(crossNsDir, nsPid))
+                    {
+                        endpoints.Add(new ProcessEndpointInfo(hostPid, address));
+                    }
+                }
+                else if (!string.Equals(targetTmpDir, PidIpcEndpoint.IpcRootPath, StringComparison.Ordinal))
+                {
+                    foreach (string address in PidIpcEndpoint.ResolveAllAddresses(targetTmpDir, hostPid))
+                    {
+                        endpoints.Add(new ProcessEndpointInfo(hostPid, address));
+                    }
+                }
+            }
+
+            return endpoints;
         }
 
         /// <summary>

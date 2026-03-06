@@ -69,6 +69,7 @@ namespace Microsoft.Internal.Common.Commands
             public string ProcessName;
             public string FileName;
             public string CmdLineArgs;
+            public string EndpointAddress;
         }
 
         /// <summary>
@@ -120,53 +121,99 @@ namespace Microsoft.Internal.Common.Commands
             try
             {
                 StringBuilder sb = new();
-                IOrderedEnumerable<Process> processes = DiagnosticsClient.GetPublishedProcesses()
-                    .Select(GetProcessById)
-                    .Where(process => process != null)
-                    .OrderBy(process => process.ProcessName)
-                    .ThenBy(process => process.Id);
-
                 int currentPid = Process.GetCurrentProcess().Id;
                 List<ProcessDetails> printInfo = new();
-                foreach (Process process in processes)
+
+                // Use GetPublishedEndpoints to discover all endpoints, including
+                // multiple endpoints for the same PID in cross-container scenarios.
+                foreach (ProcessEndpointInfo endpoint in DiagnosticsClient.GetPublishedEndpoints())
                 {
-                    if (process.Id == currentPid)
+                    if (endpoint.ProcessId == currentPid)
                     {
                         continue;
                     }
-                    try
+
+                    // First try to get info from the local process table.
+                    Process localProcess = GetProcessById(endpoint.ProcessId);
+                    if (localProcess != null)
                     {
-                        string cmdLineArgs = GetArgs(process);
-                        cmdLineArgs = cmdLineArgs == process.MainModule?.FileName ? string.Empty : cmdLineArgs;
-                        string fileName = process.MainModule?.FileName ?? string.Empty;
-                        ProcessDetails commandInfo = new()
+                        try
                         {
-                            ProcessId = process.Id,
-                            ProcessName = process.ProcessName,
-                            FileName = fileName,
-                            CmdLineArgs = cmdLineArgs
-                        };
-                        printInfo.Add(commandInfo);
-                    }
-                    catch (Exception ex)
-                    {
-                        if (ex is Win32Exception or InvalidOperationException)
-                        {
-                            ProcessDetails commandInfo = new()
+                            string cmdLineArgs = GetArgs(localProcess);
+                            cmdLineArgs = cmdLineArgs == localProcess.MainModule?.FileName ? string.Empty : cmdLineArgs;
+                            string fileName = localProcess.MainModule?.FileName ?? string.Empty;
+                            printInfo.Add(new ProcessDetails
                             {
-                                ProcessId = process.Id,
-                                ProcessName = process.ProcessName,
-                                FileName = "[Elevated process - cannot determine path]",
-                                CmdLineArgs = ""
-                            };
-                            printInfo.Add(commandInfo);
+                                ProcessId = endpoint.ProcessId,
+                                ProcessName = localProcess.ProcessName,
+                                FileName = fileName,
+                                CmdLineArgs = cmdLineArgs,
+                                EndpointAddress = endpoint.EndpointAddress
+                            });
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            Debug.WriteLine($"[PrintProcessStatus] {ex}");
+                            if (ex is Win32Exception or InvalidOperationException)
+                            {
+                                printInfo.Add(new ProcessDetails
+                                {
+                                    ProcessId = endpoint.ProcessId,
+                                    ProcessName = localProcess.ProcessName,
+                                    FileName = "[Elevated process - cannot determine path]",
+                                    CmdLineArgs = "",
+                                    EndpointAddress = endpoint.EndpointAddress
+                                });
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"[PrintProcessStatus] {ex}");
+                            }
                         }
+                    }
+                    else
+                    {
+                        // Process not found locally. This is likely a cross-container
+                        // endpoint where the PID belongs to another namespace.
+                        // Try connecting to the diagnostic endpoint to get process info.
+                        string processName = "[Remote/Container]";
+                        string cmdLineArgs = "";
+                        try
+                        {
+                            DiagnosticsClient client = new(endpoint.EndpointAddress);
+                            ProcessInfo processInfo = client.GetProcessInfo();
+                            if (processInfo != null)
+                            {
+                                processName = !string.IsNullOrEmpty(processInfo.ManagedEntrypointAssemblyName)
+                                    ? processInfo.ManagedEntrypointAssemblyName
+                                    : processName;
+                                cmdLineArgs = processInfo.CommandLine ?? "";
+                            }
+                        }
+                        catch
+                        {
+                            // Socket may be stale or inaccessible; skip silently.
+                            continue;
+                        }
+
+                        printInfo.Add(new ProcessDetails
+                        {
+                            ProcessId = endpoint.ProcessId,
+                            ProcessName = processName,
+                            FileName = endpoint.EndpointAddress ?? "",
+                            CmdLineArgs = cmdLineArgs,
+                            EndpointAddress = endpoint.EndpointAddress
+                        });
                     }
                 }
+
+                // Deduplicate by endpoint address (in case both local and proc discovery found the same one)
+                printInfo = printInfo
+                    .GroupBy(p => p.EndpointAddress ?? p.ProcessId.ToString())
+                    .Select(g => g.First())
+                    .OrderBy(p => p.ProcessName)
+                    .ThenBy(p => p.ProcessId)
+                    .ToList();
+
                 FormatTableRows(printInfo, sb);
                 stdOut.WriteLine(sb.ToString());
                 return 0;

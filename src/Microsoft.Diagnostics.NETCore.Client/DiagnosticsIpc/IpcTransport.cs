@@ -356,6 +356,52 @@ namespace Microsoft.Diagnostics.NETCore.Client
         }
 
         /// <summary>
+        /// Returns all diagnostic endpoint addresses in a directory matching the given PID.
+        /// Unlike <see cref="TryResolveAddress"/>, which returns only the most recent socket,
+        /// this method returns every matching endpoint. This is needed for cross-container
+        /// scenarios where multiple processes share the same PID in different namespaces.
+        /// </summary>
+        internal static List<string> ResolveAllAddresses(string searchDirectory, int pid)
+        {
+            List<string> addresses = new();
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // On Windows, named pipes are per-PID with no timestamp disambiguation.
+                // There can only be one pipe per PID.
+                string address = string.Format(_defaultAddressFormatWindows, pid);
+                addresses.Add(address);
+
+                try
+                {
+                    string dsrouterAddress = Directory.GetFiles(searchDirectory, string.Format(_dsrouterAddressFormatWindows, pid)).FirstOrDefault();
+                    if (!string.IsNullOrEmpty(dsrouterAddress))
+                    {
+                        addresses.Add(dsrouterAddress);
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    string[] defaultAddresses = Directory.GetFiles(searchDirectory, string.Format(_defaultAddressFormatNonWindows, pid, "*"));
+                    addresses.AddRange(defaultAddresses);
+
+                    string[] dsrouterAddresses = Directory.GetFiles(searchDirectory, string.Format(_dsrouterAddressFormatNonWindows, pid, "*"));
+                    addresses.AddRange(dsrouterAddresses);
+                }
+                catch
+                {
+                    // Directory not accessible; return empty list.
+                }
+            }
+
+            return addresses;
+        }
+
+        /// <summary>
         /// On Linux, reads /proc/{pid}/status to determine if the process is in a different PID namespace.
         /// Returns true and outputs the namespace PID if cross-namespace, false otherwise.
         /// Returns false on non-Linux platforms.
