@@ -1,17 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- TODO (get-it-working plan): align with repo conventions — TFM net8.0 ($(NetCoreAppMinTargetFramework)),
-       ClrMD via $(MicrosoftDiagnosticsRuntimeVersion), xunit.v3 via Arcade, and resolve the dbgeng
-       dependency (copy the Microsoft.Diagnostics.Runtime.Utilities dbgeng wrappers in-tree rather than
-       the package). This project is a faithful move from the PoC and is NOT yet wired into the build. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- dbgeng is Windows/x64 in this PoC; the abstraction is OS-agnostic. -->
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Test-support library (drives an in-process dbgeng + dotnet-dump to assert SOS output). Not a
+         shipping product and not a test project itself. net10.0 is required by
+         Microsoft.Diagnostics.Runtime.Utilities (ships net10.0 only). dbgeng is Windows-only but loaded
+         at runtime, so the library itself is RID-neutral. -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,19 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- ClrMD itself — used as a correctness ORACLE: load the same dump and compute the
-         expected value (object address, generation) that SOS output is checked against. -->
-    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="4.0.726401" />
-    <!-- In-process dbgeng COM wrappers (ClrMD's "cdb" engine, reused per Lee's
-         established pattern). Published package keeps the PoC self-contained. -->
-    <PackageReference Include="Microsoft.Diagnostics.Runtime.Utilities" Version="4.0.726401" />
-    <!-- Ships dbgeng.dll + dbghelp/dbgcore/dbgmodel/msdia so we never depend on a
-         machine-wide WinDbg/Debugging Tools install. -->
-    <PackageReference Include="Microsoft.Debugging.Platform.DbgEng" Version="20260319.1511.0" />
-    <!-- xUnit v3 core (xunit.v3.core.dll) WITHOUT the executable enforcement that the test-author
-         package imposes — this is the library variant, so the harness can expose TheoryData-based
-         matrices for tests to consume. -->
-    <PackageReference Include="xunit.v3.extensibility.core" Version="3.0.0" />
+    <!-- In-process dbgeng COM wrappers (IDebugClient/Control/...). Already a repo dependency. -->
+    <PackageReference Include="Microsoft.Diagnostics.Runtime.Utilities" Version="$(MicrosoftDiagnosticsRuntimeUtilitiesVersion)" />
+    <!-- xUnit v3 core (library variant, no executable enforcement) so the harness can expose
+         TheoryData-based matrices for the test project to consume. Version from the Arcade default. -->
+    <PackageReference Include="xunit.v3.extensibility.core" Version="$(XUnitV3Version)" />
   </ItemGroup>
 
 </Project>

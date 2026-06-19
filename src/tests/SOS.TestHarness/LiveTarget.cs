@@ -49,7 +49,7 @@ public sealed class LiveTarget : Target
 
         // Runs forward to the marker; throws if the process exits/crashes before reaching it. The
         // managed module for bpmd is flavor-specific (desktop's is the EXE, .NET Core's the DLL).
-        Host.RunToBpmd(_definition.ModuleFor(Flavor), stop.Method);
+        Engine.RunToBpmd(_definition.ModuleFor(Flavor), stop.Method);
         _at = stop.Name;
     }
 
@@ -60,7 +60,7 @@ public sealed class LiveTarget : Target
             return; // already at the crash; repeatable no-op
         }
 
-        Host.RunToCrash(); // throws if the process exits without crashing
+        Engine.RunToCrash(); // throws if the process exits without crashing
         _at = CrashMarker;
     }
 
@@ -71,16 +71,16 @@ public sealed class LiveTarget : Target
     /// </summary>
     public void RunToBreakpoint()
     {
-        Host.RunToBreakpoint();
+        Engine.RunToBreakpoint();
         _at = null; // arbitrary, caller-managed location — not a named point
         ReplayContext.Current?.Add(ReplayStepKind.Navigate, "RunToBreakpoint()", null);
     }
 
-    protected override SosOutput SosCore(string command) => Host.Sos(command);
+    protected override SosOutput SosCore(string command) => Engine.Sos(command);
 
-    protected override SosOutput ExecuteCore(string command) => Host.Execute(command);
+    protected override SosOutput ExecuteCore(string command) => Engine.Execute(command);
 
-    private ChildEngineClient Host =>
+    private ChildEngineClient Engine =>
         _host ?? throw new ObjectDisposedException(nameof(LiveTarget));
 
     public override void Dispose()

@@ -54,8 +54,7 @@ public static class Targets
 
         if (live)
         {
-            return Task.Run<Target>(() =>
-            {
+            return Task.Run<Target>(() => {
                 string exe = SnapshotStore.TargetExe(flavor, target);
                 return new LiveTarget(host, definition, flavor, exe);
             });
@@ -87,27 +86,36 @@ public static class Targets
 
     public static TheoryData<Host, Flavor, Liveness> BuildMatrix(Flavor flavor = Flavor.AllValid, Host host = Host.AllValid, Liveness liveness = Liveness.AllValid)
     {
-        var theoryData = new TheoryData<Host, Flavor, Liveness>();
+        TheoryData<Host, Flavor, Liveness> theoryData = new();
 
-        foreach (var h in SingleFlags(host))
+        foreach (Host h in SingleFlags(host))
         {
             // Platform constraint: cdb is Windows-only, lldb is non-Windows-only.
             if (h == Host.Cdb && !OperatingSystem.IsWindows())
+            {
                 continue;
+            }
 
             if (h == Host.Lldb && OperatingSystem.IsWindows())
+            {
                 continue;
+            }
 
-            foreach (var f in SingleFlags(flavor))
+            foreach (Flavor f in SingleFlags(flavor))
             {
                 // Framework is Windows-only.
                 if (f == Flavor.Framework && !OperatingSystem.IsWindows())
+                {
                     continue;
+                }
 
-                foreach (var l in SingleFlags(liveness))
+                foreach (Liveness l in SingleFlags(liveness))
                 {
                     // Live + DotnetDump is not a valid combination.
-                    if (l == Liveness.Live && h == Host.DotnetDump) continue;
+                    if (l == Liveness.Live && h == Host.DotnetDump)
+                    {
+                        continue;
+                    }
 
                     theoryData.Add(h, f, l);
                 }
@@ -120,28 +128,36 @@ public static class Targets
 
     public static TheoryData<string, Host, Flavor, Liveness> BuildMatrix(string[] targets, Flavor flavor = Flavor.AllValid, Host host = Host.AllValid, Liveness liveness = Liveness.AllValid)
     {
-        var theoryData = new TheoryData<string, Host, Flavor, Liveness>();
+        TheoryData<string, Host, Flavor, Liveness> theoryData = new();
 
-        foreach (var h in SingleFlags(host))
+        foreach (Host h in SingleFlags(host))
         {
             // Platform constraint: cdb is Windows-only, lldb is non-Windows-only.
             if (h == Host.Cdb && !OperatingSystem.IsWindows())
+            {
                 continue;
+            }
 
             if (h == Host.Lldb && OperatingSystem.IsWindows())
+            {
                 continue;
+            }
 
-            foreach (var f in SingleFlags(flavor))
+            foreach (Flavor f in SingleFlags(flavor))
             {
                 // Framework is Windows-only.
                 if (f == Flavor.Framework && !OperatingSystem.IsWindows())
+                {
                     continue;
+                }
 
-                foreach (var l in SingleFlags(liveness))
+                foreach (Liveness l in SingleFlags(liveness))
                 {
                     // Live + DotnetDump is not a valid combination.
                     if (l == Liveness.Live && h == Host.DotnetDump)
+                    {
                         continue;
+                    }
 
                     foreach (string target in targets)
                     {
@@ -156,11 +172,13 @@ public static class Targets
 
     private static IEnumerable<T> SingleFlags<T>(T value) where T : struct, Enum
     {
-        foreach (var candidate in Enum.GetValues<T>())
+        foreach (T candidate in Enum.GetValues<T>())
         {
             long v = Convert.ToInt64(candidate);
             if (v != 0 && (v & (v - 1)) == 0 && (Convert.ToInt64(value) & v) != 0)
+            {
                 yield return candidate;
+            }
         }
     }
 

@@ -46,8 +46,7 @@ public abstract class DbgEngHostBase : IDebuggerHost
     {
         try
         {
-            Invoke(() =>
-            {
+            Invoke(() => {
                 _clientDisposable = IDebugClient.Create(ToolPaths.DbgEngDirectory);
                 Client = (IDebugClient)_clientDisposable;
                 Control = (IDebugControl)_clientDisposable;
@@ -139,8 +138,8 @@ public abstract class DbgEngHostBase : IDebuggerHost
     }
 
     private static bool ChainContainsSos(string chain) =>
-        chain.IndexOf("sos.dll", StringComparison.OrdinalIgnoreCase) >= 0
-        || chain.IndexOf("\\sos:", StringComparison.OrdinalIgnoreCase) >= 0;
+        chain.Contains("sos.dll", StringComparison.OrdinalIgnoreCase)
+        || chain.Contains("\\sos:", StringComparison.OrdinalIgnoreCase);
 
     public SosOutput Execute(string command) => new(Name, command, Invoke(() => RunCore(command)));
 
@@ -158,8 +157,7 @@ public abstract class DbgEngHostBase : IDebuggerHost
     {
         try
         {
-            Invoke(() =>
-            {
+            Invoke(() => {
                 _output?.Dispose();
                 Client?.EndSession(DEBUG_END.ACTIVE_TERMINATE);
                 _clientDisposable?.Dispose();
@@ -189,8 +187,7 @@ public abstract class DbgEngHostBase : IDebuggerHost
     {
         using ManualResetEventSlim done = new();
         Exception? error = null;
-        _work.Add(() =>
-        {
+        _work.Add(() => {
             try
             {
                 action();

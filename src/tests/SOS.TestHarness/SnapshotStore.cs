@@ -74,7 +74,7 @@ public static class SnapshotStore
         s_targetExe.GetOrAdd((flavor, targetName), k => new Lazy<string>(() => BuildTarget(k.Flavor, TargetCatalog.Get(k.Target)))).Value;
 
     private static string DumpDir(Flavor flavor, string target) =>
-        Path.Combine(PocLayout.Root, "artifacts", "dumps", s_targetConfiguration.ToLower(), flavor.ToString().ToLower(), target);
+        Path.Combine(PocLayout.Root, "artifacts", "dumps", s_targetConfiguration.ToLowerInvariant(), flavor.ToString().ToLowerInvariant(), target);
 
     private static string CaptureTarget(Flavor flavor, TargetDefinition target)
     {
@@ -205,7 +205,7 @@ public static class SnapshotStore
     {
         string root = PocLayout.Root;
         string project = Path.Combine(root, "testtargets", target.Project, target.Project + ".csproj");
-        string outDir = Path.Combine(root, "artifacts", "targets", s_targetConfiguration.ToLower(), flavor.ToString().ToLower(), target.Name);
+        string outDir = Path.Combine(root, "artifacts", "targets", s_targetConfiguration.ToLowerInvariant(), flavor.ToString().ToLowerInvariant(), target.Name);
         string exe = Path.Combine(outDir, target.Project + ".exe");
 
         if (File.Exists(exe))

@@ -138,4 +138,3 @@ public sealed class SosTable : IEnumerable<SosRow>
 
     IEnumerator IEnumerable.GetEnumerator() => _rows.GetEnumerator();
 }
-

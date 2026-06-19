@@ -71,7 +71,7 @@ public static class DbgEngCapturer
                 }
                 else // Crash
                 {
-                    RunToBreak(control, "second-chance crash", expectExit: false);
+                    RunToBreak(control, "second-chance crash");
                 }
 
                 Run($".dump /ma \"{dumpPath}\"");
@@ -94,7 +94,7 @@ public static class DbgEngCapturer
         }
     }
 
-    private static void RunToBreak(IDebugControl control, string what, bool expectExit = false)
+    private static void RunToBreak(IDebugControl control, string what)
     {
         const int MaxResumes = 40;
         for (int i = 0; i < MaxResumes; i++)

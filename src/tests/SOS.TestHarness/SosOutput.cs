@@ -231,7 +231,7 @@ public sealed class SosOutput
         return true;
     }
 
-    private string[] SliceColumns(string line, int[] bounds)
+    private static string[] SliceColumns(string line, int[] bounds)
     {
         string[] cells = new string[bounds.Length];
         for (int c = 0; c < bounds.Length; c++)

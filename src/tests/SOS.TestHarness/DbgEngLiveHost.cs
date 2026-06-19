@@ -54,8 +54,7 @@ public sealed class DbgEngLiveHost : DbgEngHostBase
     {
         string bpmdOutput = string.Empty;
 
-        Invoke(() =>
-        {
+        Invoke(() => {
             // Clear any breakpoints left from a previous stop point. Otherwise a stale bpmd (e.g. the
             // still-pending AtGen0 breakpoint) gets resolved and re-hit the moment we resume toward
             // the next one, stranding us at the old location instead of advancing.
@@ -103,8 +102,7 @@ public sealed class DbgEngLiveHost : DbgEngHostBase
     /// </summary>
     public SosOutput RunToCrash()
     {
-        Invoke(() =>
-        {
+        Invoke(() => {
             // Drop any bpmd breakpoints from earlier stop points so they don't break before the crash.
             RunCore("!bpmd -clearall");
             RunCore("bc *");
@@ -142,8 +140,7 @@ public sealed class DbgEngLiveHost : DbgEngHostBase
     {
         const uint StatusBreakpoint = 0x80000003; // int3 — a real breakpoint, not a crash
 
-        Invoke(() =>
-        {
+        Invoke(() => {
             RunCore("g");
             Control.WaitForEvent(TimeSpan.FromSeconds(60));
             Control.GetExecutionStatus(out DEBUG_STATUS status);
