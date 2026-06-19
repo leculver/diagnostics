@@ -1,0 +1,211 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+using System;
+using System.Runtime.CompilerServices;
+using System.Threading;
+
+// Consolidated marker debuggee for the modern SOS test harness. One process drives every "snapshot"
+// scenario the harness needs, each at its own named TestHarness.Stop point (the harness self-collects a
+// dump at each; live tests set a bpmd breakpoint on the same marker method). Scenarios are ordered so
+// the heap scenario (live/dead objects) is captured before any GC runs for the generation-promotion
+// stops. A fixed set of worker threads is parked at a known method for the whole run so the all-threads
+// stop always sees them.
+//
+// Uniquely-named public marker types let tests find a specific object via `!dumpheap -type <T>`
+// (statistics -> MT -> address) and cross-check it against -p/-l/-a slot values, -gc roots, and dso —
+// an SOS-native value oracle with no ClrMD. Public const/static-readonly fields are mirrored into the
+// test project by the source generator so thresholds aren't hard-coded twice.
+public static class SosHarnessScenarios
+{
+    // ~192 KB: comfortably larger than every small object so dumpheap -min/-max can bracket it.
+    // Mirrored into the test project (TestTargets.SosHarnessScenarios.BigArraySize) by the source gen.
+    public const int BigArraySize = 0x30000;
+
+    // Known primitive values held in args/locals across the argslocals stop (checked by clrstack -p/-l/-a).
+    public const int ArgNumberValue = 0x2a;
+    public const int LocalIntValue = 0x63;
+
+    private const int WorkerCount = 3;
+
+    // WorkerCount workers + the main thread rendezvous here before any stop is taken.
+    private static readonly Barrier s_ready = new(WorkerCount + 1);
+
+    // Held until the end so workers stay parked in WorkerPark across every dump/breakpoint.
+    private static readonly ManualResetEventSlim s_release = new(initialState: false);
+
+    // Rooted statics so SOS/ClrMD can always find the live objects under test.
+    private static LiveUniqueMarker? s_live;
+    private static byte[]? s_big;
+    private static int[]? s_promoted;
+
+    [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
+    private static void Main()
+    {
+        // Park WorkerCount worker threads at WorkerPark for the whole run.
+        Thread[] workers = new Thread[WorkerCount];
+        for (int i = 0; i < WorkerCount; i++)
+        {
+            workers[i] = new Thread(WorkerEntry) { IsBackground = false, Name = $"Worker{i}" };
+            workers[i].Start();
+        }
+
+        // Proceed only once every worker is parked.
+        s_ready.SignalAndWait();
+
+        // 1. HEAP scenario FIRST (before any GC): a rooted live object, a known-large rooted array, and a
+        //    deliberately-dropped dead object (still uncollected at the snapshot).
+        LiveUniqueMarker live = new();
+        s_live = live;
+        byte[] big = new byte[BigArraySize];
+        s_big = big;
+        AllocateDead();
+        AtHeap();
+
+        // 2. ARGSLOCALS scenario: known primitive + uniquely-typed reference args/locals held live.
+        ArgsLocalsMethod(ArgNumberValue, new ArgUniqueMarker());
+
+        // 3. ROOTS scenario: a normal object, a pinned interior pointer, and a plain interior pointer.
+        RootsScenario();
+
+        // 4. GC PROMOTION scenario: promote one rooted array gen0 -> gen1 -> gen2, stopping at each.
+        int[] promoted = new int[100];
+        s_promoted = promoted;
+        AtGen0();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        AtGen1();
+        GC.Collect(2);
+        GC.WaitForPendingFinalizers();
+        AtGen2();
+
+        // 5. ALLTHREADS scenario: workers are still parked at WorkerPark.
+        AtAllThreads();
+
+        // Release the workers so the process exits cleanly.
+        s_release.Set();
+        foreach (Thread w in workers)
+        {
+            w.Join();
+        }
+
+        GC.KeepAlive(live);
+        GC.KeepAlive(big);
+        GC.KeepAlive(promoted);
+        GC.KeepAlive(s_live);
+        GC.KeepAlive(s_big);
+        GC.KeepAlive(s_promoted);
+    }
+
+    // --- Heap scenario ---
+
+    // Allocate a DeadUniqueMarker and let the only reference die when this method returns. No
+    // GC.KeepAlive and no GC.Collect before the snapshot, so at the heap stop it is unreachable (dead)
+    // but not yet collected.
+    [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
+    private static void AllocateDead()
+    {
+        DeadUniqueMarker dead = new();
+        _ = dead;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtHeap() => TestHarness.Stop("heap");
+
+    // --- Args/locals scenario ---
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ArgsLocalsMethod(int number, ArgUniqueMarker arg)
+    {
+        int localInt = LocalIntValue;
+        LocalUniqueMarker localObj = new();
+
+        AtArgsLocals();
+
+        // Keep every slot live across the stop so SOS can read the values.
+        if (number != ArgNumberValue)
+        {
+            throw new Exception("unreachable");
+        }
+
+        if (localInt != LocalIntValue)
+        {
+            throw new Exception("unreachable");
+        }
+
+        GC.KeepAlive(arg);
+        GC.KeepAlive(localObj);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtArgsLocals() => TestHarness.Stop("argslocals");
+
+    // --- GC roots scenario ---
+
+    private static unsafe void RootsScenario()
+    {
+        object normal = new();
+        byte[] buffer = new byte[256];
+        int[] numbers = new int[] { 10, 20, 30, 40 };
+
+        fixed (byte* pinned = buffer)
+        {
+            ref int interior = ref numbers[2];
+
+            AtRoots();
+
+            // Touch everything so none of it is optimized away or collected before the marker.
+            *pinned = (byte)interior;
+            GC.KeepAlive(normal);
+            GC.KeepAlive(buffer);
+            GC.KeepAlive(numbers);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtRoots() => TestHarness.Stop("roots");
+
+    // --- GC promotion scenario ---
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtGen0() => TestHarness.Stop("gen0");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtGen1() => TestHarness.Stop("gen1");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtGen2() => TestHarness.Stop("gen2");
+
+    // --- All-threads scenario ---
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WorkerEntry() => WorkerPark();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WorkerPark()
+    {
+        // Rendezvous with main, then block here so this thread's managed stack stays in WorkerPark when
+        // any stop is taken.
+        s_ready.SignalAndWait();
+        s_release.Wait();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtAllThreads() => TestHarness.Stop("allthreads");
+}
+
+public sealed class LiveUniqueMarker
+{
+}
+
+public sealed class DeadUniqueMarker
+{
+}
+
+public sealed class ArgUniqueMarker
+{
+}
+
+public sealed class LocalUniqueMarker
+{
+}

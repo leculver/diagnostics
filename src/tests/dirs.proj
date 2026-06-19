@@ -19,6 +19,7 @@
     <ProjectReference Remove="SOS.TestHarness/**/*.csproj" />
     <ProjectReference Remove="SOS.TestHarness.EngineHost/**/*.csproj" />
     <ProjectReference Remove="SOS.TestHarness.Capturer/**/*.csproj" />
+    <ProjectReference Remove="SOS.TestHarness.SourceGen/**/*.csproj" />
 
     <!-- Install test runtimes (SDK, shared frameworks) into artifacts/dotnet-test/.
          Using ProjectReference ensures the install runs exactly once via MSBuild's
