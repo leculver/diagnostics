@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>$(SupportedXUnitTestTargetFrameworks)</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- Modern SOS test home: xunit v3 (Microsoft.Testing.Platform). Arcade's XUnitV3 target
+         implicitly references xunit.v3 and the test runner; no explicit PackageReference needed.
+         xunit v3 runs as an MTP executable, so OutputType must be Exe. -->
+    <TestRunnerName>XUnitV3</TestRunnerName>
+  </PropertyGroup>
+
+</Project>
