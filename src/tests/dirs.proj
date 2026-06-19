@@ -14,12 +14,6 @@
     <!-- Unused -->
     <ProjectReference Remove="Grape/Grape.csproj" />
 
-    <!-- SOS test harness (moved from the PoC). Not yet wired into the build/deps; excluded here so the
-         globbing traversal doesn't try to build it. The "get it working" change removes these excludes. -->
-    <ProjectReference Remove="SOS.TestHarness/**/*.csproj" />
-    <ProjectReference Remove="SOS.TestHarness.EngineHost/**/*.csproj" />
-    <ProjectReference Remove="SOS.TestHarness.Capturer/**/*.csproj" />
-    <ProjectReference Remove="SOS.TestHarness.SourceGen/**/*.csproj" />
 
     <!-- Install test runtimes (SDK, shared frameworks) into artifacts/dotnet-test/.
          Using ProjectReference ensures the install runs exactly once via MSBuild's
