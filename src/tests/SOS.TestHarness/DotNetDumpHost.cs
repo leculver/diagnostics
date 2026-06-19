@@ -46,6 +46,10 @@ public sealed class DotNetDumpHost : IDebuggerHost
         psi.ArgumentList.Add("analyze");
         psi.ArgumentList.Add(dumpPath);
 
+        // Hermetic, local-only symbols (the dev's _NT_SYMBOL_PATH may point at the Azure-authed symweb).
+        Directory.CreateDirectory(RepoLayout.SymbolCache);
+        psi.Environment["_NT_SYMBOL_PATH"] = RepoLayout.SymbolCache;
+
         _process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start dotnet-dump");
         _stdin = _process.StandardInput;
 

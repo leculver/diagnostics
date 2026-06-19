@@ -63,6 +63,15 @@ public static class RepoLayout
     public static string Scratch { get; } =
         Path.Combine(Root, "artifacts", "tmp", "sos-harness", ArtifactsConfiguration);
 
+    /// <summary>
+    /// A hermetic, local-only symbol path for the SOS host child processes. The dev machine's
+    /// <c>_NT_SYMBOL_PATH</c> often points at the Azure-authed <c>symweb</c> server, which makes SOS's
+    /// host init pull in Azure.Identity (and fail loading its closure) and would make tests depend on
+    /// the network. We point the children at a local cache only — debuggee PDBs are found next to the
+    /// module, so managed source/line resolution still works.
+    /// </summary>
+    public static string SymbolCache { get; } = Path.Combine(Scratch, "symcache");
+
     private static string FindRoot()
     {
         string? dir = AppContext.BaseDirectory;

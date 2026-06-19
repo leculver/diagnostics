@@ -46,6 +46,11 @@ public sealed class ChildEngineClient : IDebuggerHost
             psi.ArgumentList.Add(a);
         }
 
+        // Hermetic, local-only symbols (the dev's _NT_SYMBOL_PATH may point at the Azure-authed symweb,
+        // which crashes SOS host init and makes tests network-dependent).
+        Directory.CreateDirectory(RepoLayout.SymbolCache);
+        psi.Environment["_NT_SYMBOL_PATH"] = RepoLayout.SymbolCache;
+
         _process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start EngineHost");
         _stdin = _process.StandardInput;
 

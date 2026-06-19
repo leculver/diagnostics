@@ -1,0 +1,170 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+using System.IO;
+using System.Reflection;
+using System.Text;
+using SOS.TestHarness;
+using Xunit;
+using Xunit.v3;
+
+// Apply to the whole assembly: every test is wrapped, with zero per-test code. The hook only does
+// work when a test FAILS and actually drove a Target, so passing tests pay only a dictionary lookup.
+[assembly: SOS.Tests.SosReplay]
+
+namespace SOS.Tests;
+
+/// <summary>
+/// Assembly-wide after-test hook: when a test fails, write a "replay" artifact capturing how to
+/// reproduce it by hand — the host/flavor/liveness, the dump file(s), and the ordered SOS/debugger
+/// commands the test ran (captured automatically in the <c>using Target</c> window). The artifact is
+/// both attached to the test result (<see cref="ITestContext.AddAttachment"/>, so IDEs/CI surface it)
+/// and dropped under <c>artifacts/replays/</c> for direct use. Tests need no changes: capture is
+/// automatic and failure detection rides on <see cref="ITestContext.TestState"/>, which is populated
+/// by the time <see cref="After"/> runs.
+/// </summary>
+public sealed class SosReplayAttribute : BeforeAfterTestAttribute
+{
+    public override void After(MethodInfo methodUnderTest, IXunitTest test)
+    {
+        // Always take (and remove) this test's capture, pass or fail, so the table stays bounded.
+        ReplayContext? replay = ReplayContext.Take(test.UniqueID);
+
+        ITestContext ctx = TestContext.Current;
+        if (ctx.TestState?.Result != TestResult.Failed)
+        {
+            return;
+        }
+
+        if (replay is null)
+        {
+            return; // the test never created a Target — nothing to replay
+        }
+
+        string content = ReplayRenderer.Render(test.TestDisplayName, ctx.TestState, replay);
+
+        ctx.AddAttachment("sos-replay", content);
+
+        try
+        {
+            string dir = Path.Combine(RepoLayout.Root, "artifacts", "replays");
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, ReplayRenderer.FileName(test.TestDisplayName));
+            File.WriteAllText(path, content);
+            ctx.TestOutputHelper?.WriteLine($"SOS replay written to: {path}");
+        }
+        catch (System.Exception e)
+        {
+            // Never let replay capture turn a test failure into an unrelated error.
+            ctx.TestOutputHelper?.WriteLine($"SOS replay file could not be written: {e.Message}");
+        }
+    }
+}
+
+/// <summary>Renders a <see cref="ReplayContext"/> (plus the xUnit failure state) into a human- and
+/// copy-paste-friendly replay script.</summary>
+internal static class ReplayRenderer
+{
+    public static string Render(string testName, TestResultState state, ReplayContext replay)
+    {
+        StringBuilder sb = new();
+        sb.AppendLine("# ───────────────────────────────────────────────────────────────────────────");
+        sb.AppendLine("# SOS replay");
+        sb.AppendLine($"# test:    {testName}");
+        sb.AppendLine($"# result:  {state.Result}");
+        sb.AppendLine($"# host:    {replay.Host}    flavor: {replay.Flavor}    live: {replay.Live}    target: {replay.TargetName}");
+        sb.AppendLine("# ───────────────────────────────────────────────────────────────────────────");
+
+        AppendFailure(sb, state);
+        AppendTimeline(sb, replay);
+        AppendReplay(sb, replay);
+
+        return sb.ToString();
+    }
+
+    private static void AppendFailure(StringBuilder sb, TestResultState state)
+    {
+        sb.AppendLine("#");
+        sb.AppendLine("# --- failure ---------------------------------------------------------------");
+        string?[] types = state.ExceptionTypes ?? [];
+        string?[] messages = state.ExceptionMessages ?? [];
+        for (int i = 0; i < types.Length; i++)
+        {
+            string message = i < messages.Length ? OneLine(messages[i] ?? string.Empty) : string.Empty;
+            sb.AppendLine($"# {types[i]}: {message}");
+        }
+
+        string? stack = (state.ExceptionStackTraces ?? System.Array.Empty<string?>()).FirstOrDefault();
+        foreach (string line in (stack ?? string.Empty).Replace("\r", string.Empty).Split('\n'))
+        {
+            if (line.Trim().Length > 0)
+            {
+                sb.AppendLine($"#   {line.TrimEnd()}");
+            }
+        }
+    }
+
+    private static void AppendTimeline(StringBuilder sb, ReplayContext replay)
+    {
+        sb.AppendLine("#");
+        sb.AppendLine("# --- timeline (everything the target did, in order) ------------------------");
+        foreach (ReplayStep step in replay.Steps)
+        {
+            sb.AppendLine($"# {step.Kind,-8} {step.Text}");
+        }
+    }
+
+    private static void AppendReplay(StringBuilder sb, ReplayContext replay)
+    {
+        sb.AppendLine("#");
+        sb.AppendLine("# --- replay ----------------------------------------------------------------");
+        if (replay.Live)
+        {
+            sb.AppendLine("# Live target: not reproducible from a dump. Launch the debuggee under the");
+            sb.AppendLine("# host and re-issue the navigations/commands from the timeline above.");
+            return;
+        }
+
+        // Group consecutive commands by the dump they ran against; dead-target navigation switches
+        // dumps, so each group is one `dotnet-dump analyze <dump>` session.
+        string? currentDump = null;
+        bool any = false;
+        foreach (ReplayStep step in replay.Steps)
+        {
+            if (step.Kind == ReplayStepKind.Navigate)
+            {
+                continue;
+            }
+
+            any = true;
+            if (step.DumpPath != currentDump)
+            {
+                currentDump = step.DumpPath;
+                sb.AppendLine();
+                sb.AppendLine($"dotnet-dump analyze \"{currentDump}\"");
+            }
+
+            sb.AppendLine($"> {step.Text}");
+        }
+
+        if (!any)
+        {
+            sb.AppendLine("# (no commands were run before the failure)");
+        }
+    }
+
+    /// <summary>A filesystem-safe file name derived from the test display name.</summary>
+    public static string FileName(string testName)
+    {
+        char[] chars = testName.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray();
+        string safe = new(chars);
+        if (safe.Length > 150)
+        {
+            safe = safe[..150];
+        }
+
+        return safe + ".replay.txt";
+    }
+
+    private static string OneLine(string? s) => (s ?? string.Empty).Replace("\r", " ").Replace("\n", " ");
+}

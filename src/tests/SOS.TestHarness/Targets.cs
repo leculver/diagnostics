@@ -88,7 +88,7 @@ public static class Targets
     {
         TheoryData<Host, Flavor, Liveness> theoryData = new();
 
-        foreach (Host h in SingleFlags(host))
+        foreach (Host h in SingleFlags(host, "SOSHARNESS_ONLY_HOSTS"))
         {
             // Platform constraint: cdb is Windows-only, lldb is non-Windows-only.
             if (h == Host.Cdb && !OperatingSystem.IsWindows())
@@ -101,7 +101,7 @@ public static class Targets
                 continue;
             }
 
-            foreach (Flavor f in SingleFlags(flavor))
+            foreach (Flavor f in SingleFlags(flavor, "SOSHARNESS_ONLY_FLAVORS"))
             {
                 // Framework is Windows-only.
                 if (f == Flavor.Framework && !OperatingSystem.IsWindows())
@@ -109,7 +109,7 @@ public static class Targets
                     continue;
                 }
 
-                foreach (Liveness l in SingleFlags(liveness))
+                foreach (Liveness l in SingleFlags(liveness, "SOSHARNESS_ONLY_LIVENESS"))
                 {
                     // Live + DotnetDump is not a valid combination.
                     if (l == Liveness.Live && h == Host.DotnetDump)
@@ -130,7 +130,7 @@ public static class Targets
     {
         TheoryData<string, Host, Flavor, Liveness> theoryData = new();
 
-        foreach (Host h in SingleFlags(host))
+        foreach (Host h in SingleFlags(host, "SOSHARNESS_ONLY_HOSTS"))
         {
             // Platform constraint: cdb is Windows-only, lldb is non-Windows-only.
             if (h == Host.Cdb && !OperatingSystem.IsWindows())
@@ -143,7 +143,7 @@ public static class Targets
                 continue;
             }
 
-            foreach (Flavor f in SingleFlags(flavor))
+            foreach (Flavor f in SingleFlags(flavor, "SOSHARNESS_ONLY_FLAVORS"))
             {
                 // Framework is Windows-only.
                 if (f == Flavor.Framework && !OperatingSystem.IsWindows())
@@ -151,7 +151,7 @@ public static class Targets
                     continue;
                 }
 
-                foreach (Liveness l in SingleFlags(liveness))
+                foreach (Liveness l in SingleFlags(liveness, "SOSHARNESS_ONLY_LIVENESS"))
                 {
                     // Live + DotnetDump is not a valid combination.
                     if (l == Liveness.Live && h == Host.DotnetDump)
@@ -176,6 +176,28 @@ public static class Targets
         {
             long v = Convert.ToInt64(candidate);
             if (v != 0 && (v & (v - 1)) == 0 && (Convert.ToInt64(value) & v) != 0)
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Like <see cref="SingleFlags{T}(T)"/>, but additionally narrowed by an optional comma-separated
+    /// allow-list in <paramref name="envVar"/> (enum names, case-insensitive). Lets a run be staged onto
+    /// a subset of the matrix during bring-up, e.g. <c>SOSHARNESS_ONLY_FLAVORS=Core</c>,
+    /// <c>SOSHARNESS_ONLY_HOSTS=Cdb,DotnetDump</c>, <c>SOSHARNESS_ONLY_LIVENESS=Dump</c>.
+    /// </summary>
+    private static IEnumerable<T> SingleFlags<T>(T value, string envVar) where T : struct, Enum
+    {
+        string? only = Environment.GetEnvironmentVariable(envVar);
+        HashSet<string>? allowed = string.IsNullOrEmpty(only)
+            ? null
+            : new HashSet<string>(only.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), StringComparer.OrdinalIgnoreCase);
+
+        foreach (T candidate in SingleFlags(value))
+        {
+            if (allowed is null || allowed.Contains(candidate.ToString()))
             {
                 yield return candidate;
             }
