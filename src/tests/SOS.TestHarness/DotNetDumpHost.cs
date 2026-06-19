@@ -38,21 +38,10 @@ public sealed class DotNetDumpHost : IDebuggerHost
             CreateNoWindow = true,
         };
 
-        // Allow pointing the analyze host at a locally-built dotnet-dump (run as
-        // `dotnet <dll> analyze <dump>`) via SOSHARNESS_DOTNETDUMP_DLL; otherwise use the
-        // installed global tool exe. Only the analyze host is overridden here — the debuggee's
-        // `dotnet-dump collect` self-snapshot keeps using the global tool.
-        string? overrideDll = Environment.GetEnvironmentVariable("SOSHARNESS_DOTNETDUMP_DLL");
-        if (!string.IsNullOrEmpty(overrideDll))
-        {
-            psi.FileName = "dotnet";
-            psi.ArgumentList.Add(overrideDll);
-        }
-        else
-        {
-            psi.FileName = ToolPaths.DotNetDumpExe;
-        }
-
+        // Drive the repo-built dotnet-dump as `dotnet <dll> analyze <dump>` so the harness always
+        // validates the freshly-built tool, not a machine-wide install.
+        psi.FileName = RepoLayout.DotNetExe;
+        psi.ArgumentList.Add(ToolPaths.DotNetDumpDll);
         psi.ArgumentList.Add("analyze");
         psi.ArgumentList.Add(dumpPath);
 
