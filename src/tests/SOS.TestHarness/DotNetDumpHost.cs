@@ -19,6 +19,7 @@ namespace SOS.TestHarness;
 public sealed class DotNetDumpHost : IDebuggerHost
 {
     private const string EndMarker = "<END_COMMAND_OUTPUT>";
+    private const string ErrorMarker = "<END_COMMAND_ERROR>";
 
     private readonly Process _process;
     private readonly StreamWriter _stdin;
@@ -85,7 +86,8 @@ public sealed class DotNetDumpHost : IDebuggerHost
                 throw new TimeoutException($"dotnet-dump did not return output for '{command ?? "<startup>"}' within {timeout}.");
             }
 
-            if (line.TrimEnd().EndsWith(EndMarker, StringComparison.Ordinal))
+            string trimmed = line.TrimEnd();
+            if (trimmed.EndsWith(EndMarker, StringComparison.Ordinal) || trimmed.EndsWith(ErrorMarker, StringComparison.Ordinal))
             {
                 break;
             }

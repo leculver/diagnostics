@@ -23,10 +23,10 @@ public static class RepoLayout
     public static string Root { get; } = FindRoot();
 
     /// <summary><c>artifacts/bin</c> under the repo root.</summary>
-    public static string ArtifactsBin { get; } = Path.Combine(Root, "artifacts", "bin");
+    public static string ArtifactsBin => Path.Combine(Root, "artifacts", "bin");
 
     /// <summary>The native build output directory, e.g. <c>artifacts/bin/Windows_NT.x64.Debug</c>.</summary>
-    public static string ArtifactsBinNative { get; } =
+    public static string ArtifactsBinNative =>
         Path.Combine(ArtifactsBin, $"{TargetOS}.{TargetArch}.{ArtifactsConfiguration}");
 
     /// <summary>The processor architecture token used in repo artifact paths (<c>x64</c>/<c>x86</c>/<c>arm64</c>).</summary>
@@ -45,11 +45,11 @@ public static class RepoLayout
         OperatingSystem.IsMacOS() ? "OSX" : "Linux";
 
     /// <summary>The runtime identifier the harness builds/publishes against (e.g. <c>win-x64</c>).</summary>
-    public static string Rid { get; } =
+    public static string Rid =>
         (OperatingSystem.IsWindows() ? "win-" : OperatingSystem.IsMacOS() ? "osx-" : "linux-") + TargetArch;
 
     /// <summary>The repo's locally-acquired .NET host (<c>.dotnet/dotnet.exe</c>) used to shell out builds.</summary>
-    public static string DotNetExe { get; } = Path.Combine(Root, ".dotnet", OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+    public static string DotNetExe => Path.Combine(Root, ".dotnet", OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
 
     /// <summary>Path to a debuggee project under the SOS.UnitTests Debuggees tree.</summary>
     public static string DebuggeeProject(string name) =>

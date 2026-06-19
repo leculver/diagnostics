@@ -293,25 +293,19 @@ public static class SnapshotStore
         s_projectBuildLocks.GetOrAdd(projectPath, _ => new object());
 
     /// <summary>
-    /// Locate a repo-built subprocess host (EngineHost / Capturer); build it on demand if the repo build
-    /// hasn't produced it yet. Output lands at the conventional
+    /// Build (incrementally) and locate a subprocess host (EngineHost / Capturer). These reference the
+    /// harness, so we always run an incremental <c>dotnet build</c> (a no-op when nothing changed) to
+    /// guarantee the child never runs a stale copy of the harness; output lands at the conventional
     /// <c>artifacts/bin/&lt;Name&gt;/&lt;Config&gt;/net10.0/&lt;rid&gt;/&lt;Name&gt;.dll</c> path.
     /// </summary>
     private static string SubprocessDll(string name)
     {
         string dll = Path.Combine(RepoLayout.ArtifactsBin, name, RepoLayout.ArtifactsConfiguration, "net10.0", RepoLayout.Rid, name + ".dll");
-        if (File.Exists(dll))
-        {
-            return dll;
-        }
-
         string project = Path.Combine(RepoLayout.Root, "src", "tests", name, name + ".csproj");
+
         lock (BuildLockFor(project))
         {
-            if (!File.Exists(dll))
-            {
-                RunToCompletion(RepoLayout.DotNetExe, $"build \"{project}\" -c {RepoLayout.ArtifactsConfiguration}");
-            }
+            RunToCompletion(RepoLayout.DotNetExe, $"build \"{project}\" -c {RepoLayout.ArtifactsConfiguration}");
         }
 
         if (!File.Exists(dll))

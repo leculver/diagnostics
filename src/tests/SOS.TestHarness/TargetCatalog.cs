@@ -23,20 +23,21 @@ public enum StopKind
 public sealed record StopPoint(string Name, StopKind Kind, string? Method);
 
 /// <summary>A standalone test target (its own program) and its stop points.</summary>
-/// <param name="Name">Target name used by tests, e.g. "gcpromotion".</param>
+/// <param name="Name">Target name used by tests, e.g. "divzero".</param>
 /// <param name="Project">
-/// The target's project/assembly name under <c>testtargets/</c>, e.g. "GcPromotion". This is the
-/// folder, the csproj, and the produced <c>&lt;Project&gt;.exe</c> / <c>&lt;Project&gt;.dll</c>.
+/// The target's project/assembly name under the repo's <c>SOS.UnitTests/Debuggees</c> tree, e.g.
+/// "DivZero". This is the folder, the csproj, and the produced <c>&lt;Project&gt;.exe</c> /
+/// <c>&lt;Project&gt;.dll</c>.
 /// </param>
 /// <param name="StopPoints">Ordered named stop points.</param>
 public sealed record TargetDefinition(string Name, string Project, IReadOnlyList<StopPoint> StopPoints)
 {
-    /// <summary>Managed module name for <c>bpmd</c> on .NET Core (e.g. "GcPromotion.dll").</summary>
+    /// <summary>Managed module name for <c>bpmd</c> on .NET Core (e.g. "SosHarnessScenarios.dll").</summary>
     public string Module => Project + ".dll";
 
     /// <summary>
     /// Managed module name for <c>bpmd</c> in a given flavor. Desktop .NET Framework's managed
-    /// module is the EXE itself (e.g. "GcPromotion.exe"); .NET Core's is the DLL.
+    /// module is the EXE itself (e.g. "SosHarnessScenarios.exe"); .NET Core's is the DLL.
     /// </summary>
     public string ModuleFor(Flavor flavor) => flavor == Flavor.Framework ? Project + ".exe" : Project + ".dll";
 
@@ -47,178 +48,99 @@ public sealed record TargetDefinition(string Name, string Project, IReadOnlyList
     public string DefaultStopName => StopPoints[0].Name;
 }
 
-/// <summary>The targets this PoC knows about.</summary>
+/// <summary>
+/// The debuggee targets the SOS test harness knows about, mapped to the diagnostics repo's existing
+/// <c>SOS.UnitTests/Debuggees</c> projects plus the one consolidated marker debuggee the harness adds
+/// (<see cref="Scenarios"/>). Crash targets reproduce an unhandled exception / fault that the runtime
+/// turns into a crash dump; the marker debuggee self-snapshots at named <c>TestHarness.Stop</c> points
+/// (live tests set a <c>bpmd</c> breakpoint on the same marker method).
+/// </summary>
 public static class TargetCatalog
 {
-    public const string GcPromotion = "gcpromotion";
-    public const string NestedException = "nestedexception";
+    // --- Repo crash debuggees (unhandled exception / fault -> crash dump). ---
 
-    // Targets ported from the legacy SOS.UnitTests Debuggees (the debuggees exercised by the
-    // !clrstack scripts). Crash targets reproduce an unhandled exception / access violation; snapshot
-    // targets replace the old Debugger.Break() calls with NoInlining Stop_* marker methods.
-    public const string SimpleThrow = "simplethrow";
+    public const string NestedException = "nestedexception";
     public const string DivZero = "divzero";
     public const string AsyncMain = "asyncmain";
     public const string DynamicMethod = "dynamicmethod";
+    public const string Overflow = "overflow";
     public const string LineNums = "linenums";
+    public const string SimpleThrow = "simplethrow";
     public const string Reflection = "reflection";
-    public const string InterpreterStackTest = "interpreterstacktest";
-    public const string MiniDumpLocalVarLookup = "minidumplocalvarlookup";
-    public const string FindRootsOlderGeneration = "findrootsoldergeneration";
-    public const string VarargPInvokeInteropMD = "varargpinvokeinteropmd";
 
-    // Original (not ported) target that pins/refs objects on the stack at a marker so !clrstack -gc
-    // reliably prints normal, (pinned) (interior), and (interior) roots for the parser to exercise.
-    public const string GcRoots = "gcroots";
+    // --- The one consolidated marker debuggee the harness adds (Phase 4). Every snapshot/oracle/live
+    //     scenario is a named stop point on this single program (see SosHarnessScenarios). ---
 
-    // Original (not ported) target with named primitive + uniquely-typed reference params and locals
-    // held live at a marker, for !clrstack -p / -l / -a value checks (incl. the dumpheap oracle).
-    public const string ArgsLocals = "argslocals";
+    public const string Scenarios = "scenarios";
 
-    // Original (not ported) target with several worker threads parked at a known method, for the
-    // multi-thread enumeration of !clrstack -all.
-    public const string ManagedThreads = "managedthreads";
+    // Stop-point names on the Scenarios debuggee (kept as constants so tests don't stringly-type them).
+    public const string StopHeap = "heap";
+    public const string StopArgsLocals = "argslocals";
+    public const string StopRoots = "roots";
+    public const string StopGen0 = "gen0";
+    public const string StopGen1 = "gen1";
+    public const string StopGen2 = "gen2";
+    public const string StopAllThreads = "allthreads";
 
-    // Original (not ported) target that holds a rooted live object, an unreachable dead object, and a
-    // known-large rooted array at a marker stop, for !dumpheap (-type/-mt/-short, -live/-dead, -min/-max).
-    public const string DumpHeapScenario = "dumpheapscenario";
+    private const string ScenariosProject = "SosHarnessScenarios";
 
     private static readonly Dictionary<string, TargetDefinition> s_targets = new[]
     {
         new TargetDefinition(
-            GcPromotion,
-            Project: "GcPromotion",
-            StopPoints: new[]
-            {
-                new StopPoint("gen0", StopKind.Snapshot, "GcPromotion.AtGen0"),
-                new StopPoint("gen1", StopKind.Snapshot, "GcPromotion.AtGen1"),
-                new StopPoint("gen2", StopKind.Snapshot, "GcPromotion.AtGen2"),
-            }),
-
-        new TargetDefinition(
             NestedException,
-            Project: "NestedExceptions",
-            StopPoints: new[]
-            {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
-
-        // --- Ported crash targets (unhandled exception / AV -> crash dump). ---
-
-        new TargetDefinition(
-            SimpleThrow,
-            Project: "SimpleThrow",
-            StopPoints: new[]
-            {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
+            Project: "NestedExceptionTest",
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
 
         new TargetDefinition(
             DivZero,
             Project: "DivZero",
-            StopPoints: new[]
-            {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
 
         new TargetDefinition(
             AsyncMain,
             Project: "AsyncMain",
-            StopPoints: new[]
-            {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
 
         new TargetDefinition(
             DynamicMethod,
             Project: "DynamicMethod",
-            StopPoints: new[]
-            {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
+
+        new TargetDefinition(
+            Overflow,
+            Project: "Overflow",
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
 
         new TargetDefinition(
             LineNums,
             Project: "LineNums",
-            StopPoints: new[]
-            {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
+
+        new TargetDefinition(
+            SimpleThrow,
+            Project: "SimpleThrow",
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
 
         new TargetDefinition(
             Reflection,
             Project: "ReflectionTest",
-            StopPoints: new[]
-            {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
 
+        // The consolidated marker debuggee: each scenario is a NoInlining marker method that calls
+        // TestHarness.Stop(name). Ordered so the heap scenario (live/dead objects) is captured before
+        // any GC runs for the generation-promotion stops.
         new TargetDefinition(
-            InterpreterStackTest,
-            Project: "InterpreterStackTest",
+            Scenarios,
+            Project: ScenariosProject,
             StopPoints: new[]
             {
-                new StopPoint("crash", StopKind.Crash, null),
-            }),
-
-        // --- Ported snapshot targets (former Debugger.Break() points). ---
-
-        new TargetDefinition(
-            MiniDumpLocalVarLookup,
-            Project: "MiniDumpLocalVarLookup",
-            StopPoints: new[]
-            {
-                new StopPoint("locals", StopKind.Snapshot, "MiniDumpLocalVarLookup.Program.Stop_Locals"),
-            }),
-
-        new TargetDefinition(
-            FindRootsOlderGeneration,
-            Project: "FindRootsOlderGeneration",
-            StopPoints: new[]
-            {
-                new StopPoint("allocated", StopKind.Snapshot, "FindRootsOlderGeneration.Program.Stop_Allocated"),
-                new StopPoint("beforegc", StopKind.Snapshot, "FindRootsOlderGeneration.Program.Stop_BeforeGc"),
-                new StopPoint("aftergc", StopKind.Snapshot, "FindRootsOlderGeneration.Program.Stop_AfterGc"),
-            }),
-
-        new TargetDefinition(
-            VarargPInvokeInteropMD,
-            Project: "VarargPInvokeInteropMD",
-            StopPoints: new[]
-            {
-                new StopPoint("beforevararg", StopKind.Snapshot, "VarargPInvokeInteropMD.Program.Stop_BeforeVararg"),
-            }),
-
-        new TargetDefinition(
-            GcRoots,
-            Project: "GcRoots",
-            StopPoints: new[]
-            {
-                new StopPoint("roots", StopKind.Snapshot, "GcRoots.AtRoots"),
-            }),
-
-        new TargetDefinition(
-            ArgsLocals,
-            Project: "ArgsLocals",
-            StopPoints: new[]
-            {
-                new StopPoint("argslocals", StopKind.Snapshot, "ArgsLocals.AtArgsLocals"),
-            }),
-
-        new TargetDefinition(
-            ManagedThreads,
-            Project: "ManagedThreads",
-            StopPoints: new[]
-            {
-                new StopPoint("allthreads", StopKind.Snapshot, "ManagedThreads.AtAllThreads"),
-            }),
-
-        new TargetDefinition(
-            DumpHeapScenario,
-            Project: "DumpHeapScenario",
-            StopPoints: new[]
-            {
-                new StopPoint("heap", StopKind.Snapshot, "DumpHeapScenario.AtHeap"),
+                new StopPoint(StopHeap, StopKind.Snapshot, $"{ScenariosProject}.AtHeap"),
+                new StopPoint(StopArgsLocals, StopKind.Snapshot, $"{ScenariosProject}.AtArgsLocals"),
+                new StopPoint(StopRoots, StopKind.Snapshot, $"{ScenariosProject}.AtRoots"),
+                new StopPoint(StopGen0, StopKind.Snapshot, $"{ScenariosProject}.AtGen0"),
+                new StopPoint(StopGen1, StopKind.Snapshot, $"{ScenariosProject}.AtGen1"),
+                new StopPoint(StopGen2, StopKind.Snapshot, $"{ScenariosProject}.AtGen2"),
+                new StopPoint(StopAllThreads, StopKind.Snapshot, $"{ScenariosProject}.AtAllThreads"),
             }),
     }.ToDictionary(t => t.Name);
 

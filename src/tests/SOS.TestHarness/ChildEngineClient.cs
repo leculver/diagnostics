@@ -32,7 +32,7 @@ public sealed class ChildEngineClient : IDebuggerHost
 
         ProcessStartInfo psi = new()
         {
-            FileName = "dotnet",
+            FileName = RepoLayout.DotNetExe,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
