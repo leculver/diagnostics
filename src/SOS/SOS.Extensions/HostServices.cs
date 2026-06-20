@@ -52,10 +52,13 @@ namespace SOS.Extensions
         /// </summary>
         static HostServices()
         {
-            if (RuntimeInformation.FrameworkDescription.StartsWith(".NET Framework"))
-            {
-                AssemblyResolver.Enable();
-            }
+            // The managed extension is loaded into an isolated context that does not fall back to the
+            // hosting runtime's trusted platform assemblies, so a dependency that is only satisfied by a
+            // framework assembly (e.g. Azure.Core requiring a newer System.Diagnostics.DiagnosticSource than
+            // SOS itself carries) fails to load and faults host init. The app-local resolver probes this
+            // assembly's directory and is a last-chance fallback (it only rescues loads that would otherwise
+            // fail), so enable it on every runtime, not just .NET Framework.
+            AssemblyResolver.Enable();
             DiagnosticLoggingService.Initialize();
         }
 
