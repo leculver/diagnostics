@@ -73,6 +73,7 @@ public static class SosHarnessScenarios
     private static Task? s_asyncTask;
     private static readonly TaskCompletionSource<int> s_asyncGate = new();
     private static ConcurrentDictionary<int, string>? s_concurrentDictionary;
+    private static ConcurrentQueue<int>? s_concurrentQueue;
 
     // A CONTENDED monitor for !syncblk: a holder parks while holding s_fatLock and a second thread blocks
     // acquiring it, inflating the lock to a sync block (unlike the uncontended thin lock above).
@@ -139,6 +140,11 @@ public static class SosHarnessScenarios
         s_concurrentDictionary[2] = "two";
         s_concurrentDictionary[3] = "three";
 
+        s_concurrentQueue = new ConcurrentQueue<int>();
+        s_concurrentQueue.Enqueue(0x111);
+        s_concurrentQueue.Enqueue(0x222);
+        s_concurrentQueue.Enqueue(0x333);
+
         Thread fatLockHolder = new(FatLockHolder) { IsBackground = false, Name = "FatLockHolder" };
         fatLockHolder.Start();
         s_fatLockHeld.Wait();
@@ -196,6 +202,7 @@ public static class SosHarnessScenarios
         GC.KeepAlive(s_timer);
         GC.KeepAlive(s_asyncTask);
         GC.KeepAlive(s_concurrentDictionary);
+        GC.KeepAlive(s_concurrentQueue);
     }
 
     // --- Diagnostic-state scenario helpers ---

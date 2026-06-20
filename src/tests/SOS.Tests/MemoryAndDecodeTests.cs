@@ -60,7 +60,7 @@ public sealed class MemoryAndDecodeTests
 
         // taskstate is a managed extension command (dotnet-dump only). The async gate's Task<int> is awaited
         // and never completed, so its status is WaitingForActivation.
-        ulong task = FirstObjectOfExactType(target, "System.Threading.Tasks.Task<System.Int32>");
+        ulong task = target.FirstObjectOfExactType("System.Threading.Tasks.Task<System.Int32>");
         target.Sos($"taskstate {task:x}").AssertContains("WaitingForActivation");
     }
 
@@ -74,16 +74,5 @@ public sealed class MemoryAndDecodeTests
 
         SosOutput exceptions = target.Sos("dumpexceptions");
         Assert.Contains("Exception", exceptions.Text, StringComparison.Ordinal);
-    }
-
-    // First instance of an exactly-named type (a -type filter also matches nested/derived types, and
-    // generic names contain spaces that the single-token -type filter can't take).
-    private static ulong FirstObjectOfExactType(Target target, string typeName)
-    {
-        string prefix = typeName.Split('<')[0];
-        SosRow row = target.DumpHeap($"-type {prefix}").Statistics
-            .SingleRow(r => r["Class Name"].Value == typeName, $"a single {typeName} method table");
-        ulong mt = row["MT"].AsUInt64(Sos.Addr);
-        return target.DumpHeap($"-mt {mt:x} -short").ShortAddresses[0];
     }
 }
