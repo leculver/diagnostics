@@ -1,0 +1,89 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+using System.Text.RegularExpressions;
+using SOS.TestHarness;
+using Xunit;
+
+namespace SOS.Tests;
+
+/// <summary>
+/// Raw-memory and state-decoding commands: the memory dumpers (<c>!dp</c>/<c>!dd</c>/<c>!db</c> and the
+/// <c>d</c>/<c>da</c>/<c>dc</c>/<c>dq</c>/<c>du</c>/<c>dw</c> family), <c>!threadstate</c>, <c>!taskstate</c>,
+/// and <c>!dumpexceptions</c>. The memory dumpers are read against <c>FieldMarker</c>, whose field values are
+/// known, so the bytes/words in the dump are verifiable.
+/// </summary>
+public sealed class MemoryAndDecodeTests
+{
+    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+
+    [Theory]
+    [MemberData(nameof(DotnetDumpMatrix))]
+    public async Task MemoryDumpers_ShowKnownFieldBytes(Host host, Flavor flavor, Liveness liveness)
+    {
+        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        target.GoToStopPoint(TargetCatalog.StopHeap);
+
+        // The memory dumpers are dotnet-dump REPL commands (cdb uses the native d*/dp/db). FieldMarker's
+        // LongField is a known 64-bit value, so it appears verbatim in the pointer/qword dumps.
+        ulong marker = target.FindUniqueObject("FieldMarker");
+        string longHex = ((ulong)TestTargets.SosHarnessScenarios.FieldMarkerLong).ToString("x");
+
+        Assert.Contains(longHex, target.Sos($"dp {marker:x}").Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(longHex, target.Sos($"dq {marker:x}").Text, StringComparison.OrdinalIgnoreCase);
+        target.Sos($"db {marker:x}").AssertContains(":"); // byte dump prints "<addr>: <bytes>"
+    }
+
+    [Theory]
+    [MemberData(nameof(Matrix))]
+    public async Task ThreadState_DecodesStateFlags(Host host, Flavor flavor, Liveness liveness)
+    {
+        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        target.GoToStopPoint(TargetCatalog.StopHeap);
+
+        // Take a real thread-state value from clrthreads and decode it.
+        Match state = Regex.Match(target.Sos("clrthreads").Text, @"\b([0-9a-fA-F]{6,8})\s+(?:Preemptive|Cooperative)");
+        Assert.True(state.Success, "expected a thread state value from clrthreads");
+
+        SosOutput decoded = target.Sos($"threadstate {state.Groups[1].Value}");
+        Assert.NotEmpty(decoded.Text.Trim());
+        Assert.DoesNotContain("Unrecognized", decoded.Text, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [MemberData(nameof(DotnetDumpMatrix))]
+    public async Task TaskState_DecodesTaskStatus(Host host, Flavor flavor, Liveness liveness)
+    {
+        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        target.GoToStopPoint(TargetCatalog.StopHeap);
+
+        // taskstate is a managed extension command (dotnet-dump only). The async gate's Task<int> is awaited
+        // and never completed, so its status is WaitingForActivation.
+        ulong task = FirstObjectOfExactType(target, "System.Threading.Tasks.Task<System.Int32>");
+        target.Sos($"taskstate {task:x}").AssertContains("WaitingForActivation");
+    }
+
+    [Theory]
+    [MemberData(nameof(Matrix))]
+    public async Task DumpExceptions_ListsManagedExceptions(Host host, Flavor flavor, Liveness liveness)
+    {
+        // A crash target's dump has the thrown exception(s) on the heap.
+        using Target target = await Targets.GetTargetAsync(TargetCatalog.NestedException, host, flavor, liveness);
+        target.GoToFirstStop();
+
+        SosOutput exceptions = target.Sos("dumpexceptions");
+        Assert.Contains("Exception", exceptions.Text, StringComparison.Ordinal);
+    }
+
+    // First instance of an exactly-named type (a -type filter also matches nested/derived types, and
+    // generic names contain spaces that the single-token -type filter can't take).
+    private static ulong FirstObjectOfExactType(Target target, string typeName)
+    {
+        string prefix = typeName.Split('<')[0];
+        SosRow row = target.DumpHeap($"-type {prefix}").Statistics
+            .SingleRow(r => r["Class Name"].Value == typeName, $"a single {typeName} method table");
+        ulong mt = row["MT"].AsUInt64(Sos.Addr);
+        return target.DumpHeap($"-mt {mt:x} -short").ShortAddresses[0];
+    }
+}
