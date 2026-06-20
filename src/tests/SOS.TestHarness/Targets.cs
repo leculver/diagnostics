@@ -161,6 +161,12 @@ public static class Targets
 
                     foreach (string target in targets)
                     {
+                        // Skip flavors a target can't support (e.g. DynamicMethod can't build for desktop).
+                        if ((TargetCatalog.FlavorsFor(target) & f) == 0)
+                        {
+                            continue;
+                        }
+
                         theoryData.Add(target, h, f, l);
                     }
                 }

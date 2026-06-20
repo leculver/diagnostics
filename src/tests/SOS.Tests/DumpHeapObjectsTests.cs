@@ -43,12 +43,8 @@ public sealed class DumpHeapObjectsTests
         // --- default sorts statistics by TotalSize, -bycount by Count (both ascending) ---
         AssertNonDecreasing(full.Statistics.Select(r => r["TotalSize"].AsInt64(Sos.Integer)), "default by TotalSize");
 
-        // -bycount is newer than the SOS the cdb host loads from ~/.dotnet/sos (it parses the unknown
-        // option as a start address). See issues.md#dumpheap-bycount-cdb.
-        if (host != Host.Cdb)
-        {
-            AssertNonDecreasing(target.DumpHeap("-bycount").Statistics.Select(r => r["Count"].AsInt64(Sos.Integer)), "-bycount by Count");
-        }
+        // Both hosts load the freshly-built repo SOS, which has -bycount.
+        AssertNonDecreasing(target.DumpHeap("-bycount").Statistics.Select(r => r["Count"].AsInt64(Sos.Integer)), "-bycount by Count");
 
         // --- -type / -mt select the same single object; -short of that filter is its address ---
         const string uniqueType = "LiveUniqueMarker";

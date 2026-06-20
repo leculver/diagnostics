@@ -30,7 +30,11 @@ public sealed record StopPoint(string Name, StopKind Kind, string? Method);
 /// <c>&lt;Project&gt;.dll</c>.
 /// </param>
 /// <param name="StopPoints">Ordered named stop points.</param>
-public sealed record TargetDefinition(string Name, string Project, IReadOnlyList<StopPoint> StopPoints)
+/// <param name="Flavors">
+/// The flavors this target supports. Defaults to all; e.g. DynamicMethod uses a .NET-Core-only API
+/// (<c>DynamicMethod.CreateDelegate&lt;T&gt;</c>) so it can't build for desktop .NET Framework.
+/// </param>
+public sealed record TargetDefinition(string Name, string Project, IReadOnlyList<StopPoint> StopPoints, Flavor Flavors = Flavor.AllValid)
 {
     /// <summary>Managed module name for <c>bpmd</c> on .NET Core (e.g. "SosHarnessScenarios.dll").</summary>
     public string Module => Project + ".dll";
@@ -104,7 +108,10 @@ public static class TargetCatalog
         new TargetDefinition(
             DynamicMethod,
             Project: "DynamicMethod",
-            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) }),
+            StopPoints: new[] { new StopPoint("crash", StopKind.Crash, null) },
+            // DynamicMethod.CreateDelegate<T>() is a .NET-Core-only API, so this debuggee can't build
+            // for desktop .NET Framework.
+            Flavors: Flavor.Core | Flavor.SingleFile),
 
         new TargetDefinition(
             Overflow,
@@ -148,4 +155,12 @@ public static class TargetCatalog
         s_targets.TryGetValue(name, out TargetDefinition? t)
             ? t
             : throw new ArgumentException($"Unknown target '{name}'. Known: {string.Join(", ", s_targets.Keys)}");
+
+    /// <summary>
+    /// The flavors a target supports, or <see cref="Flavor.AllValid"/> when <paramref name="name"/> is
+    /// not a known target (some tests pass other tokens — e.g. a stop name — through the matrix's string
+    /// dimension, which the flavor filter must tolerate).
+    /// </summary>
+    public static Flavor FlavorsFor(string name) =>
+        s_targets.TryGetValue(name, out TargetDefinition? t) ? t.Flavors : Flavor.AllValid;
 }

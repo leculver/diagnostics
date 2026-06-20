@@ -260,7 +260,10 @@ public static class SnapshotStore
         string args = flavor switch
         {
             Flavor.Framework =>
-                $"build \"{project}\" -p:BuildProjectFramework=net462 -c {config} -o \"{outDir}\"",
+                // Desktop SOS resolves source lines from a classic Windows PDB (read via DIA), not a
+                // portable/embedded one — the repo's global props default DebugType to embedded, so force
+                // a full (Windows) PDB next to the exe for the source-line tests.
+                $"build \"{project}\" -p:BuildProjectFramework=net462 -p:DebugType=full -p:DebugSymbols=true -c {config} -o \"{outDir}\"",
             Flavor.SingleFile =>
                 $"publish \"{project}\" -p:BuildProjectFramework=net10.0 -r {RepoLayout.Rid} --self-contained true " +
                 $"-p:PublishSingleFile=true -c {config} -o \"{outDir}\"",
