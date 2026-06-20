@@ -14,6 +14,17 @@ public enum StopKind
 }
 
 /// <summary>
+/// The GC flavor the debuggee runs under when captured/launched. Server GC produces a multi-heap GC
+/// (one heap per configured processor), which the eeheap parser and the generation/region tests
+/// exercise; Workstation is the single-heap default.
+/// </summary>
+public enum GcMode
+{
+    Workstation,
+    Server,
+}
+
+/// <summary>
 /// A named location in a target. The same definition drives both worlds: a dump for the
 /// snapshot/shared path, and a <c>bpmd</c> breakpoint on <see cref="Method"/> for the live path.
 /// </summary>
@@ -34,7 +45,11 @@ public sealed record StopPoint(string Name, StopKind Kind, string? Method);
 /// The flavors this target supports. Defaults to all; e.g. DynamicMethod uses a .NET-Core-only API
 /// (<c>DynamicMethod.CreateDelegate&lt;T&gt;</c>) so it can't build for desktop .NET Framework.
 /// </param>
-public sealed record TargetDefinition(string Name, string Project, IReadOnlyList<StopPoint> StopPoints, Flavor Flavors = Flavor.AllValid)
+/// <param name="GcMode">
+/// The GC mode the debuggee is captured/launched under (Workstation default; Server forces a
+/// multi-heap GC via env vars at capture/launch time).
+/// </param>
+public sealed record TargetDefinition(string Name, string Project, IReadOnlyList<StopPoint> StopPoints, Flavor Flavors = Flavor.AllValid, GcMode GcMode = GcMode.Workstation)
 {
     /// <summary>Managed module name for <c>bpmd</c> on .NET Core (e.g. "SosHarnessScenarios.dll").</summary>
     public string Module => Project + ".dll";
@@ -77,7 +92,12 @@ public static class TargetCatalog
 
     public const string Scenarios = "scenarios";
 
+    // The same marker debuggee captured under server GC (multi-heap), for the eeheap / generation-region
+    // tests that need more than one GC heap.
+    public const string ScenariosServer = "scenarios-server";
+
     // Stop-point names on the Scenarios debuggee (kept as constants so tests don't stringly-type them).
+    public const string StopThinLock = "thinlock";
     public const string StopHeap = "heap";
     public const string StopArgsLocals = "argslocals";
     public const string StopRoots = "roots";
@@ -87,6 +107,21 @@ public static class TargetCatalog
     public const string StopAllThreads = "allthreads";
 
     private const string ScenariosProject = "SosHarnessScenarios";
+
+    // The Scenarios stop points, shared by the workstation and server-GC targets. Heap stays first so
+    // GoToFirstStop() lands there; the rest are ordered as they occur, and dumps are keyed by name (not
+    // array order), so the debuggee's call order can differ.
+    private static readonly StopPoint[] s_scenarioStops =
+    {
+        new(StopHeap, StopKind.Snapshot, $"{ScenariosProject}.AtHeap"),
+        new(StopThinLock, StopKind.Snapshot, $"{ScenariosProject}.AtThinLock"),
+        new(StopArgsLocals, StopKind.Snapshot, $"{ScenariosProject}.AtArgsLocals"),
+        new(StopRoots, StopKind.Snapshot, $"{ScenariosProject}.AtRoots"),
+        new(StopGen0, StopKind.Snapshot, $"{ScenariosProject}.AtGen0"),
+        new(StopGen1, StopKind.Snapshot, $"{ScenariosProject}.AtGen1"),
+        new(StopGen2, StopKind.Snapshot, $"{ScenariosProject}.AtGen2"),
+        new(StopAllThreads, StopKind.Snapshot, $"{ScenariosProject}.AtAllThreads"),
+    };
 
     private static readonly Dictionary<string, TargetDefinition> s_targets = new[]
     {
@@ -139,16 +174,16 @@ public static class TargetCatalog
         new TargetDefinition(
             Scenarios,
             Project: ScenariosProject,
-            StopPoints: new[]
-            {
-                new StopPoint(StopHeap, StopKind.Snapshot, $"{ScenariosProject}.AtHeap"),
-                new StopPoint(StopArgsLocals, StopKind.Snapshot, $"{ScenariosProject}.AtArgsLocals"),
-                new StopPoint(StopRoots, StopKind.Snapshot, $"{ScenariosProject}.AtRoots"),
-                new StopPoint(StopGen0, StopKind.Snapshot, $"{ScenariosProject}.AtGen0"),
-                new StopPoint(StopGen1, StopKind.Snapshot, $"{ScenariosProject}.AtGen1"),
-                new StopPoint(StopGen2, StopKind.Snapshot, $"{ScenariosProject}.AtGen2"),
-                new StopPoint(StopAllThreads, StopKind.Snapshot, $"{ScenariosProject}.AtAllThreads"),
-            }),
+            StopPoints: s_scenarioStops),
+
+        // The same debuggee under server GC (multi-heap), for the eeheap / generation-region tests. Core
+        // only: server-GC coverage is exercised through the Core dump path.
+        new TargetDefinition(
+            ScenariosServer,
+            Project: ScenariosProject,
+            StopPoints: s_scenarioStops,
+            Flavors: Flavor.Core,
+            GcMode: GcMode.Server),
     }.ToDictionary(t => t.Name);
 
     public static TargetDefinition Get(string name) =>

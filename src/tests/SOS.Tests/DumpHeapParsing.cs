@@ -34,6 +34,7 @@ internal sealed class DumpHeapResult
     private SosTable? _objects;
     private SosTable? _statistics;
     private SosTable? _strings;
+    private SosTable? _thinLocks;
     private IReadOnlyList<ulong>? _short;
 
     public DumpHeapResult(SosOutput output) => _output = output;
@@ -85,6 +86,17 @@ internal sealed class DumpHeapResult
 
     /// <summary>The footer's total byte count.</summary>
     public long TotalBytes => ParseTotals().Bytes;
+
+    /// <summary>
+    /// The <c>-thinlock</c> table: <c>Object</c>, <c>Thread</c>, <c>OSId</c>, <c>Recursion</c> (one row per
+    /// object that carries a thin lock). Empty (a throwing parse) when no header is present.
+    /// </summary>
+    public SosTable ThinLocks => _thinLocks ??= _output.Table(
+        ColumnAlignment.Right("Object"), ColumnAlignment.Right("Thread"),
+        ColumnAlignment.Right("OSId"), ColumnAlignment.Right("Recursion"));
+
+    /// <summary>True if a <c>-thinlock</c> table header is present (absent when no thin locks were found).</summary>
+    public bool HasThinLocks => FindHeader("Object", "Thread", "OSId", "Recursion") >= 0;
 
     private SosTable ParseObjects()
     {
@@ -217,6 +229,21 @@ internal sealed class DumpHeapResult
                 line.Contains("Count", StringComparison.Ordinal) &&
                 line.Contains("TotalSize", StringComparison.Ordinal) &&
                 line.Contains("Class Name", StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Index of the first line containing every one of <paramref name="columns"/>, or -1.</summary>
+    private int FindHeader(params string[] columns)
+    {
+        IReadOnlyList<string> lines = _output.Lines;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (columns.All(c => lines[i].Contains(c, StringComparison.Ordinal)))
             {
                 return i;
             }

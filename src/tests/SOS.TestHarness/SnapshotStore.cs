@@ -81,7 +81,12 @@ public static class SnapshotStore
         string dumpDir = DumpDir(flavor, target.Name);
         Directory.CreateDirectory(dumpDir);
 
-        if (target.StopPoints.All(s => File.Exists(Path.Combine(dumpDir, s.Name + ".dmp"))))
+        // Resolve (build if needed) the debuggee first, then reuse the cached dumps only if they were
+        // captured from THIS exe (i.e. are at least as new as it). A rebuilt exe has a fresh PDB whose
+        // GUID won't match an older dump, so a stale dump must be re-captured.
+        string exe = TargetExe(flavor, target.Name);
+        DateTime exeTime = File.GetLastWriteTimeUtc(exe);
+        if (target.StopPoints.All(s => IsUpToDate(Path.Combine(dumpDir, s.Name + ".dmp"), exeTime)))
         {
             return dumpDir;
         }
@@ -128,6 +133,12 @@ public static class SnapshotStore
         psi.ArgumentList.Add(exePath);
         psi.ArgumentList.Add(target.Name);
         psi.ArgumentList.Add(dumpDir);
+
+        // Hermetic, local-only symbols: the Capturer hosts dbgeng+SOS, and the dev's _NT_SYMBOL_PATH may
+        // point at the Azure-authed symweb, which crashes SOS host init (loading Azure.Identity's closure).
+        Directory.CreateDirectory(RepoLayout.SymbolCache);
+        psi.Environment["_NT_SYMBOL_PATH"] = RepoLayout.SymbolCache;
+        ApplyGcMode(psi, target.GcMode);
 
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Capturer");
         string stdout = p.StandardOutput.ReadToEnd();
@@ -177,6 +188,18 @@ public static class SnapshotStore
     }
 
     /// <summary>Core/SingleFile snapshot capture: run the target once; its markers self-snapshot mid-run.</summary>
+    /// <summary>Apply the GC-mode env vars to a debuggee launch. Server forces a deterministic multi-heap
+    /// GC (a fixed heap count with DATAS off, so it can't collapse back to a single heap).</summary>
+    private static void ApplyGcMode(ProcessStartInfo psi, GcMode mode)
+    {
+        if (mode == GcMode.Server)
+        {
+            psi.Environment["DOTNET_gcServer"] = "1";
+            psi.Environment["DOTNET_GCHeapCount"] = "4";
+            psi.Environment["DOTNET_GCDynamicAdaptationMode"] = "0";
+        }
+    }
+
     private static void SelfCollectCapture(Flavor flavor, TargetDefinition target, string dumpDir)
     {
         string exe = TargetExe(flavor, target.Name);
@@ -192,6 +215,7 @@ public static class SnapshotStore
         // Tell the debuggee's stop-point helper which dotnet-dump to self-collect with (the repo-built one).
         psi.Environment["SOSHARNESS_DOTNET"] = RepoLayout.DotNetExe;
         psi.Environment["SOSHARNESS_DOTNETDUMP_DLL"] = ToolPaths.DotNetDumpDll;
+        ApplyGcMode(psi, target.GcMode);
 
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to launch target");
         string stderr = p.StandardError.ReadToEnd();
@@ -215,21 +239,22 @@ public static class SnapshotStore
         _ => throw new ArgumentOutOfRangeException(nameof(flavor)),
     };
 
-    /// <summary>Consume the repo-built Core (net10.0) debuggee; build the single project on demand if absent.</summary>
+    /// <summary>Consume the repo-built Core (net10.0) debuggee; build the single project on demand if it's
+    /// absent or older than the debuggee source (so a local debuggee edit is picked up).</summary>
     private static string AcquireCore(TargetDefinition target)
     {
         string exe = Path.Combine(RepoLayout.CoreDebuggeeDir(target.Project), target.Project + ".exe");
-        if (File.Exists(exe))
+        string project = RepoLayout.DebuggeeProject(target.Project);
+        if (IsUpToDate(exe, NewestSourceWriteTime(project)))
         {
             return exe;
         }
 
-        // Not produced by the repo build yet — build just this debuggee for net10.0 (lands at the same
+        // Missing or stale relative to source — build just this debuggee for net10.0 (lands at the same
         // conventional artifacts path).
-        string project = RepoLayout.DebuggeeProject(target.Project);
         lock (BuildLockFor(project))
         {
-            if (!File.Exists(exe))
+            if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
             {
                 RunToCompletion(RepoLayout.DotNetExe,
                     $"build \"{project}\" -p:BuildProjectFramework=net10.0 -c {RepoLayout.ArtifactsConfiguration}");
@@ -244,14 +269,15 @@ public static class SnapshotStore
         return exe;
     }
 
-    /// <summary>Build (Framework) or publish (SingleFile) the repo debuggee csproj into the scratch tree.</summary>
+    /// <summary>Build (Framework) or publish (SingleFile) the repo debuggee csproj into the scratch tree,
+    /// reusing the cached exe when it's newer than the debuggee source.</summary>
     private static string BuildFlavor(Flavor flavor, TargetDefinition target)
     {
         string project = RepoLayout.DebuggeeProject(target.Project);
         string outDir = Path.Combine(RepoLayout.Scratch, "targets", flavor.ToString().ToLowerInvariant(), target.Name);
         string exe = Path.Combine(outDir, target.Project + ".exe");
 
-        if (File.Exists(exe))
+        if (IsUpToDate(exe, NewestSourceWriteTime(project)))
         {
             return exe;
         }
@@ -270,16 +296,15 @@ public static class SnapshotStore
             _ => throw new ArgumentOutOfRangeException(nameof(flavor)),
         };
 
-        // Different flavors of one csproj share its obj/ (and project.assets.json). Building two flavors
-        // concurrently corrupts that shared restore. Serialize builds per project.
+        // Rebuild only when stale (above). Different flavors of one csproj share its obj/ (and
+        // project.assets.json), so building two flavors concurrently corrupts that shared restore —
+        // serialize builds per project.
         lock (BuildLockFor(project))
         {
-            if (File.Exists(exe))
+            if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
             {
-                return exe;
+                RunToCompletion(RepoLayout.DotNetExe, args);
             }
-
-            RunToCompletion(RepoLayout.DotNetExe, args);
         }
 
         if (!File.Exists(exe))
@@ -294,6 +319,29 @@ public static class SnapshotStore
 
     private static object BuildLockFor(string projectPath) =>
         s_projectBuildLocks.GetOrAdd(projectPath, _ => new object());
+
+    /// <summary>Newest write time of the debuggee's sources (its <c>.cs</c> files + csproj), so a build is
+    /// re-run only when the source actually changed (an unchanged build keeps a stable exe/PDB, which keeps
+    /// the cached dumps — captured against that exe's PDB — valid).</summary>
+    private static DateTime NewestSourceWriteTime(string projectFile)
+    {
+        string dir = Path.GetDirectoryName(projectFile)!;
+        DateTime newest = File.GetLastWriteTimeUtc(projectFile);
+        foreach (string cs in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
+        {
+            DateTime t = File.GetLastWriteTimeUtc(cs);
+            if (t > newest)
+            {
+                newest = t;
+            }
+        }
+
+        return newest;
+    }
+
+    /// <summary>True if <paramref name="output"/> exists and is at least as new as <paramref name="inputUtc"/>.</summary>
+    private static bool IsUpToDate(string output, DateTime inputUtc) =>
+        File.Exists(output) && File.GetLastWriteTimeUtc(output) >= inputUtc;
 
     /// <summary>
     /// Build (incrementally) and locate a subprocess host (EngineHost / Capturer). These reference the

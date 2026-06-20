@@ -26,17 +26,29 @@ public static class SosHarnessScenarios
     public const int ArgNumberValue = 0x2a;
     public const int LocalIntValue = 0x63;
 
+    // A pinned array on the pinned object heap (for !dumpheap -gen poh and the POH eeheap segment).
+    public const int PohArraySize = 0x4000;
+
     private const int WorkerCount = 3;
 
     // WorkerCount workers + the main thread rendezvous here before any stop is taken.
     private static readonly Barrier s_ready = new(WorkerCount + 1);
 
-    // Held until the end so workers stay parked in WorkerPark across every dump/breakpoint.
+    // Held until the end so workers (and the lock holder) stay parked across every dump/breakpoint.
     private static readonly ManualResetEventSlim s_release = new(initialState: false);
+
+    // Thin-lock scenario: a dedicated thread takes an UNCONTENDED Monitor (lock) on this uniquely-typed
+    // object and parks while holding it, so the object carries a THIN lock (owning thread id stamped in
+    // the object header) — not inflated to a sync block — at the thinlock stop.
+    private static readonly ThinLockMarker s_thinLock = new();
+    private static readonly ManualResetEventSlim s_lockAcquired = new(initialState: false);
 
     // Rooted statics so SOS/ClrMD can always find the live objects under test.
     private static LiveUniqueMarker? s_live;
     private static byte[]? s_big;
+#if !NETFRAMEWORK
+    private static byte[]? s_poh;
+#endif
     private static int[]? s_promoted;
 
     [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
@@ -53,6 +65,16 @@ public static class SosHarnessScenarios
         // Proceed only once every worker is parked.
         s_ready.SignalAndWait();
 
+        // Start the thin-lock holder (takes an uncontended Monitor on s_thinLock and parks while holding
+        // it) and allocate the pinned (POH) array — both live from here on, so they are present at the
+        // heap stop too. POH is a .NET 5+ concept, so Core/SingleFile only.
+        Thread lockHolder = new(LockHolder) { IsBackground = false, Name = "LockHolder" };
+        lockHolder.Start();
+        s_lockAcquired.Wait();
+#if !NETFRAMEWORK
+        s_poh = GC.AllocateArray<byte>(PohArraySize, pinned: true);
+#endif
+
         // 1. HEAP scenario FIRST (before any GC): a rooted live object, a known-large rooted array, and a
         //    deliberately-dropped dead object (still uncollected at the snapshot).
         LiveUniqueMarker live = new();
@@ -61,6 +83,9 @@ public static class SosHarnessScenarios
         s_big = big;
         AllocateDead();
         AtHeap();
+
+        // 2. THINLOCK stop: the lock holder still holds the thin lock (and the POH array is live).
+        AtThinLock();
 
         // 2. ARGSLOCALS scenario: known primitive + uniquely-typed reference args/locals held live.
         ArgsLocalsMethod(ArgNumberValue, new ArgUniqueMarker());
@@ -82,20 +107,43 @@ public static class SosHarnessScenarios
         // 5. ALLTHREADS scenario: workers are still parked at WorkerPark.
         AtAllThreads();
 
-        // Release the workers so the process exits cleanly.
+        // Release the workers (and the lock holder) so the process exits cleanly.
         s_release.Set();
         foreach (Thread w in workers)
         {
             w.Join();
         }
 
+        lockHolder.Join();
+
         GC.KeepAlive(live);
         GC.KeepAlive(big);
         GC.KeepAlive(promoted);
         GC.KeepAlive(s_live);
         GC.KeepAlive(s_big);
+#if !NETFRAMEWORK
+        GC.KeepAlive(s_poh);
+#endif
         GC.KeepAlive(s_promoted);
+        GC.KeepAlive(s_thinLock);
     }
+
+    // --- Thin-lock scenario ---
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void LockHolder()
+    {
+        // Take the lock and park while holding it. No other thread contends for s_thinLock and we never
+        // Wait/GetHashCode on it, so it stays a thin lock (no sync-block inflation).
+        lock (s_thinLock)
+        {
+            s_lockAcquired.Set();
+            s_release.Wait();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AtThinLock() => TestHarness.Stop("thinlock");
 
     // --- Heap scenario ---
 
@@ -207,5 +255,9 @@ public sealed class ArgUniqueMarker
 }
 
 public sealed class LocalUniqueMarker
+{
+}
+
+public sealed class ThinLockMarker
 {
 }

@@ -51,7 +51,7 @@ public sealed class SosToken
             return false;
         }
 
-        string normalized = value.Trim().Replace("`", string.Empty).Replace(",", string.Empty);
+        string normalized = StripHexPrefix(value.Trim().Replace("`", string.Empty).Replace(",", string.Empty));
         return ulong.TryParse(normalized, _numberStyles.Value, CultureInfo.InvariantCulture, out number);
     }
 
@@ -64,9 +64,14 @@ public sealed class SosToken
             return false;
         }
 
-        string normalized = value.Trim().Replace("`", string.Empty).Replace(",", string.Empty);
+        string normalized = StripHexPrefix(value.Trim().Replace("`", string.Empty).Replace(",", string.Empty));
         return long.TryParse(normalized, _numberStyles.Value, CultureInfo.InvariantCulture, out number);
     }
+
+    // NumberStyles.HexNumber doesn't accept a "0x" prefix, but SOS prints some hex columns 0x-prefixed
+    // (e.g. an OS thread id), so drop it before parsing. Harmless for decimal tokens (they never carry it).
+    private static string StripHexPrefix(string value) =>
+        value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? value.Substring(2) : value;
 
     public override string ToString() => $"<{Name}>";
 }
@@ -77,14 +82,15 @@ public sealed class SosToken
 /// </summary>
 public static class Sos
 {
-    /// <summary>A hex value, optionally with dbgeng's backtick high/low split (e.g. <c>00007ffd`213c498a</c>).</summary>
-    public static readonly SosToken Hex = new("hex", "[0-9A-Fa-f]+(?:`[0-9A-Fa-f]+)?", NumberStyles.HexNumber);
+    /// <summary>A hex value, optionally <c>0x</c>-prefixed and/or with dbgeng's backtick high/low split
+    /// (e.g. <c>00007ffd`213c498a</c>, <c>0x2394</c>).</summary>
+    public static readonly SosToken Hex = new("hex", "(?:0[xX])?[0-9A-Fa-f]+(?:`[0-9A-Fa-f]+)?", NumberStyles.HexNumber);
 
     /// <summary>A decimal value, optionally with thousands separators.</summary>
     public static readonly SosToken Dec = new("dec", "[0-9]+(?:,[0-9]+)*", NumberStyles.None);
 
     /// <summary>A pointer/address — same shape as <see cref="Hex"/>, but named for intent at call sites.</summary>
-    public static readonly SosToken Addr = new("addr", "[0-9A-Fa-f]+(?:`[0-9A-Fa-f]+)?", NumberStyles.HexNumber);
+    public static readonly SosToken Addr = new("addr", "(?:0[xX])?[0-9A-Fa-f]+(?:`[0-9A-Fa-f]+)?", NumberStyles.HexNumber);
 
     /// <summary>
     /// A decimal value with optional `,`.
