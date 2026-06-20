@@ -51,7 +51,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
         if (!_pooled)
         {
-            _host = HostFactory.CreateDumpHost(hostKind, dumpPath);
+            _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath);
             _host.LoadSos();
         }
     }
@@ -84,7 +84,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
     void IPooledHost.OpenHost()
     {
-        _host = HostFactory.CreateDumpHost(_hostKind, DumpPath);
+        _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath);
         _host.LoadSos();
     }
 

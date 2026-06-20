@@ -24,7 +24,6 @@ public sealed class ClrStackAllThreadsTests
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_AllThreads(Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
         target.GoToStopPoint(TargetCatalog.StopAllThreads);
 

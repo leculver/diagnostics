@@ -21,7 +21,6 @@ public sealed class GcWhereTests
     [MemberData(nameof(StructureMatrix))]
     public async Task GcWhere_Structure(Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
         target.GoToStopPoint("gen0");
 
@@ -46,7 +45,6 @@ public sealed class GcWhereTests
     [MemberData(nameof(Matrix))]
     public async Task GcWhere_Moves(Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         KnownIssues.SkipLiveGenPromotion(liveness);
         using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
 

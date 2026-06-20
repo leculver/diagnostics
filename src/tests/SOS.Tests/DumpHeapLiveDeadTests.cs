@@ -24,7 +24,6 @@ public sealed class DumpHeapLiveDeadTests
     [MemberData(nameof(Matrix))]
     public async Task DumpHeap_LiveAndDead(Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
         target.GoToFirstStop();
 

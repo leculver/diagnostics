@@ -24,7 +24,6 @@ public sealed class DumpHeapObjectsTests
     [MemberData(nameof(Matrix))]
     public async Task DumpHeap_ObjectsStatisticsAndSize(Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
         target.GoToFirstStop();
 

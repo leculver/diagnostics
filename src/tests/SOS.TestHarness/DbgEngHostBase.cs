@@ -92,6 +92,17 @@ public abstract class DbgEngHostBase : IDebuggerHost
         // pre-loaded SOS first so the SOS under test is unambiguously OUR build, then load ours
         // and verify via .chain that ours is the one in the chain.
         EnsureNoSosLoaded();
+
+        // For self-contained single-file dumps the runtime (and DAC) is bundled in the exe, so dbgeng
+        // can't find mscordaccore.dll on disk. When the harness tells us where the matching DAC lives,
+        // set its load path before loading SOS so the DAC is available when SOS initializes. (Mirrors
+        // `.cordll -ve -u -lp <dir>` from the use-local-sos workflow.)
+        string? dacDir = Environment.GetEnvironmentVariable("SOSHARNESS_DAC_DIR");
+        if (!string.IsNullOrEmpty(dacDir))
+        {
+            RunCore($".cordll -ve -u -lp {dacDir}");
+        }
+
         RunCore($".load {ToolPaths.SosPath}");
         VerifyOurSosLoaded();
 

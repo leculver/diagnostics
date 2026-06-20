@@ -28,7 +28,6 @@ public sealed class ClrThreadsTests
     [MemberData(nameof(Matrix))]
     public async Task ClrThreads_ReportsThreadCount(string targetName, Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
         target.GoToFirstStop();
 

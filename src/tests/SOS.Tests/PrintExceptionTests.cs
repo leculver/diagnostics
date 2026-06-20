@@ -25,7 +25,6 @@ public sealed class PrintExceptionTests
     [MemberData(nameof(Matrix))]
     public async Task PrintException_Structure(Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(TargetCatalog.NestedException, host, flavor, liveness);
         target.GoToFirstStop();
 
@@ -47,7 +46,6 @@ public sealed class PrintExceptionTests
     [MemberData(nameof(Matrix))]
     public async Task PrintException_Data(Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(TargetCatalog.NestedException, host, flavor, liveness);
         target.GoToFirstStop();
 

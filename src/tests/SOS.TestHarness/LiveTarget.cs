@@ -30,7 +30,7 @@ public sealed class LiveTarget : Target
         : base(hostKind, definition.Name, flavor)
     {
         _definition = definition;
-        _host = HostFactory.CreateLiveHost(hostKind, exePath);
+        _host = HostFactory.CreateLiveHost(hostKind, flavor, exePath);
     }
 
     protected override void GoToStopPointCore(string stopName)

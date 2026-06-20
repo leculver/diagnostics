@@ -26,7 +26,7 @@ public sealed class ChildEngineClient : IDebuggerHost
 
     public string Name { get; }
 
-    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs)
+    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir)
     {
         Name = name;
 
@@ -49,7 +49,20 @@ public sealed class ChildEngineClient : IDebuggerHost
         // Hermetic, local-only symbols (the dev's _NT_SYMBOL_PATH may point at the Azure-authed symweb,
         // which crashes SOS host init and makes tests network-dependent).
         Directory.CreateDirectory(RepoLayout.SymbolCache);
-        psi.Environment["_NT_SYMBOL_PATH"] = RepoLayout.SymbolCache;
+        string symbolPath = RepoLayout.SymbolCache;
+
+        // For self-contained single-file the runtime (coreclr.dll) and the DAC (mscordaccore.dll) are
+        // bundled in the exe, so dbgeng can't find them on disk. Point it at the runtime pack that has
+        // both: on the symbol/image path so dbgeng can index coreclr, and via SOSHARNESS_DAC_DIR so the
+        // EngineHost runs `.cordll -lp <dir>` (DAC load path) before `.load sos`.
+        if (!string.IsNullOrEmpty(dacDir))
+        {
+            symbolPath = RepoLayout.SymbolCache + ";" + dacDir;
+            psi.Environment["_NT_EXECUTABLE_IMAGE_PATH"] = dacDir;
+            psi.Environment["SOSHARNESS_DAC_DIR"] = dacDir;
+        }
+
+        psi.Environment["_NT_SYMBOL_PATH"] = symbolPath;
 
         _process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start EngineHost");
         _stdin = _process.StandardInput;
@@ -61,12 +74,12 @@ public sealed class ChildEngineClient : IDebuggerHost
     }
 
     /// <summary>A child engine over a crash/snapshot dump.</summary>
-    public static ChildEngineClient ForDump(string hostName, string dumpPath) =>
-        new(hostName, "dump", new[] { dumpPath });
+    public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null) =>
+        new(hostName, "dump", new[] { dumpPath }, dacDir);
 
     /// <summary>A live child engine that launches the target (parked at the loader break, SOS loaded).</summary>
-    public static ChildEngineClient ForLive(string hostName, string exePath) =>
-        new(hostName, "live", new[] { exePath });
+    public static ChildEngineClient ForLive(string hostName, string exePath, string? dacDir = null) =>
+        new(hostName, "live", new[] { exePath }, dacDir);
 
     public void LoadSos()
     {

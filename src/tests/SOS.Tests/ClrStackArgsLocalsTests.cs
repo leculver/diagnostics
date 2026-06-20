@@ -27,7 +27,6 @@ public sealed class ClrStackArgsLocalsTests
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_ArgsLocals(string targetName, Host host, Flavor flavor, Liveness liveness)
     {
-        KnownIssues.SkipSingleFileUnderCdb(host, flavor);
         using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
         if (targetName == TargetCatalog.Scenarios)
         {
