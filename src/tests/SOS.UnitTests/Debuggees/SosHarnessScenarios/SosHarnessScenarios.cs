@@ -2,8 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 // Consolidated marker debuggee for the modern SOS test harness. One process drives every "snapshot"
 // scenario the harness needs, each at its own named TestHarness.Stop point (the harness self-collects a
@@ -65,6 +67,18 @@ public static class SosHarnessScenarios
     // Object-inspection oracle (known fields, struct field, and int[] field), live from the heap stop on.
     private static FieldMarker? s_fields;
 
+    // Diagnostic-state oracles, live from the heap stop onward: a never-firing timer (!timerinfo), a
+    // suspended async state machine + its gate (!dumpasync), and a populated ConcurrentDictionary (!dcd).
+    private static Timer? s_timer;
+    private static Task? s_asyncTask;
+    private static readonly TaskCompletionSource<int> s_asyncGate = new();
+    private static ConcurrentDictionary<int, string>? s_concurrentDictionary;
+
+    // A CONTENDED monitor for !syncblk: a holder parks while holding s_fatLock and a second thread blocks
+    // acquiring it, inflating the lock to a sync block (unlike the uncontended thin lock above).
+    private static readonly object s_fatLock = new();
+    private static readonly ManualResetEventSlim s_fatLockHeld = new(initialState: false);
+
     [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
     private static void Main()
     {
@@ -114,6 +128,24 @@ public static class SosHarnessScenarios
             SignatureElement = new byte[] { 0x08 },            // ELEMENT_TYPE_I4
         };
 
+        // Diagnostic-state oracles, all live at the heap stop: a never-firing timer (!timerinfo), a parked
+        // thread-pool work item (!threadpool), a suspended async state machine (!dumpasync), a populated
+        // ConcurrentDictionary (!dcd), and a contended monitor that inflates to a sync block (!syncblk).
+        s_timer = new Timer(_ => { }, null, dueTime: 3_600_000, period: Timeout.Infinite);
+        ThreadPool.QueueUserWorkItem(_ => s_release.Wait());
+        s_asyncTask = SuspendedAsync();
+        s_concurrentDictionary = new ConcurrentDictionary<int, string>();
+        s_concurrentDictionary[1] = "one";
+        s_concurrentDictionary[2] = "two";
+        s_concurrentDictionary[3] = "three";
+
+        Thread fatLockHolder = new(FatLockHolder) { IsBackground = false, Name = "FatLockHolder" };
+        fatLockHolder.Start();
+        s_fatLockHeld.Wait();
+        Thread fatLockWaiter = new(FatLockWaiter) { IsBackground = true, Name = "FatLockWaiter" };
+        fatLockWaiter.Start();
+        Thread.Sleep(250); // let the waiter block on s_fatLock so the monitor inflates to a sync block
+
         AllocateDead();
         AtHeap();
 
@@ -148,6 +180,7 @@ public static class SosHarnessScenarios
         }
 
         lockHolder.Join();
+        fatLockHolder.Join();
 
         GC.KeepAlive(live);
         GC.KeepAlive(big);
@@ -160,6 +193,35 @@ public static class SosHarnessScenarios
         GC.KeepAlive(s_promoted);
         GC.KeepAlive(s_thinLock);
         GC.KeepAlive(s_fields);
+        GC.KeepAlive(s_timer);
+        GC.KeepAlive(s_asyncTask);
+        GC.KeepAlive(s_concurrentDictionary);
+    }
+
+    // --- Diagnostic-state scenario helpers ---
+
+    // Suspends forever at the await (the gate is never completed), so a suspended async state machine is
+    // present on the heap for !dumpasync.
+    private static async Task SuspendedAsync() => await s_asyncGate.Task.ConfigureAwait(false);
+
+    // Holds s_fatLock and parks; combined with FatLockWaiter blocking on the same lock this inflates the
+    // monitor to a sync block for !syncblk.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void FatLockHolder()
+    {
+        lock (s_fatLock)
+        {
+            s_fatLockHeld.Set();
+            s_release.Wait();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void FatLockWaiter()
+    {
+        lock (s_fatLock)
+        {
+        }
     }
 
     // --- Thin-lock scenario ---
