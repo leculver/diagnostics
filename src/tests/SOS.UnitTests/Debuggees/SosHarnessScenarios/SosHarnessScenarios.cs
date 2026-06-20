@@ -29,6 +29,17 @@ public static class SosHarnessScenarios
     // A pinned array on the pinned object heap (for !dumpheap -gen poh and the POH eeheap segment).
     public const int PohArraySize = 0x4000;
 
+    // Known field/struct/array values for the object-inspection commands (dumpobj fields, dumpvc, and
+    // dumparray -details), mirrored into the test project by the source generator so the oracle isn't
+    // duplicated. The known int[] holds element i == (i + 1) * KnownIntArrayElementStep.
+    public const int FieldMarkerInt = 0x11223344;
+    public const long FieldMarkerLong = 0x556677889AABBCCD;
+    public const string FieldMarkerText = "field-marker-text";
+    public const int ValueMarkerFirst = 0x0ABCDEF;
+    public const long ValueMarkerSecond = 0x1122334455;
+    public const int KnownIntArrayLength = 8;
+    public const int KnownIntArrayElementStep = 0x11;
+
     private const int WorkerCount = 3;
 
     // WorkerCount workers + the main thread rendezvous here before any stop is taken.
@@ -50,6 +61,9 @@ public static class SosHarnessScenarios
     private static byte[]? s_poh;
 #endif
     private static int[]? s_promoted;
+
+    // Object-inspection oracle (known fields, struct field, and int[] field), live from the heap stop on.
+    private static FieldMarker? s_fields;
 
     [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
     private static void Main()
@@ -81,6 +95,25 @@ public static class SosHarnessScenarios
         s_live = live;
         byte[] big = new byte[BigArraySize];
         s_big = big;
+
+        // Object-inspection oracles with known field/struct/array contents.
+        int[] known = new int[KnownIntArrayLength];
+        for (int i = 0; i < known.Length; i++)
+        {
+            known[i] = (i + 1) * KnownIntArrayElementStep;
+        }
+
+        s_fields = new FieldMarker
+        {
+            IntField = FieldMarkerInt,
+            LongField = FieldMarkerLong,
+            TextField = FieldMarkerText,
+            Value = new ValueMarker { First = ValueMarkerFirst, Second = ValueMarkerSecond },
+            Numbers = known,
+            MethodSignature = new byte[] { 0x00, 0x00, 0x01 }, // [DEFAULT] Void ()
+            SignatureElement = new byte[] { 0x08 },            // ELEMENT_TYPE_I4
+        };
+
         AllocateDead();
         AtHeap();
 
@@ -126,6 +159,7 @@ public static class SosHarnessScenarios
 #endif
         GC.KeepAlive(s_promoted);
         GC.KeepAlive(s_thinLock);
+        GC.KeepAlive(s_fields);
     }
 
     // --- Thin-lock scenario ---
@@ -260,4 +294,30 @@ public sealed class LocalUniqueMarker
 
 public sealed class ThinLockMarker
 {
+}
+
+// A value type with two known fields, embedded in FieldMarker so dumpvc can be exercised on the inline
+// value-class instance (its address comes from dumpobj's Value column for the Value field).
+public struct ValueMarker
+{
+    public int First;
+    public long Second;
+}
+
+// A reference type with known instance fields of several shapes (primitive, wide primitive, reference,
+// and an embedded value type), so dumpobj prints a non-trivial Fields table to assert against.
+public sealed class FieldMarker
+{
+    public int IntField;
+    public long LongField;
+    public string? TextField;
+    public ValueMarker Value;
+    public int[]? Numbers;
+
+    // Raw COR_SIGNATURE blobs so dumpsig/dumpsigelem can decode a real signature: a method signature
+    // [DEFAULT] Void () = { CALLCONV_DEFAULT(0x00), argCount 0, ELEMENT_TYPE_VOID(0x01) }, and a single
+    // ELEMENT_TYPE_I4(0x08) element for dumpsigelem. Held in a byte[] so a test can take the address of
+    // the first byte via dumparray.
+    public byte[]? MethodSignature;
+    public byte[]? SignatureElement;
 }

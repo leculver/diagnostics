@@ -1,0 +1,43 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+using SOS.TestHarness;
+using Xunit;
+
+namespace SOS.Tests;
+
+/// <summary>
+/// <c>!dumpdelegate</c> on the debuggee's worker-thread delegate. Each parked worker is started from
+/// <c>new Thread(WorkerEntry)</c>, so a <c>ThreadStart</c> delegate bound to
+/// <c>SosHarnessScenarios.WorkerEntry()</c> is live on the heap; dumpdelegate must resolve its
+/// target/method/name row to that method.
+/// </summary>
+public sealed class DumpDelegateTests
+{
+    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+
+    [Theory]
+    [MemberData(nameof(Matrix))]
+    public async Task DumpDelegate_ResolvesWorkerEntry(Host host, Flavor flavor, Liveness liveness)
+    {
+        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        target.GoToStopPoint(TargetCatalog.StopHeap);
+
+        // Find the ThreadStart delegate that targets WorkerEntry (workers are started with it).
+        DelegateEntry? workerEntry = null;
+        foreach (ulong candidate in target.DumpHeap("-type System.Threading.ThreadStart -short").ShortAddresses)
+        {
+            DumpDelegateResult dump = target.DumpDelegate(candidate);
+            workerEntry = dump.Entries.FirstOrDefault(e => e.Name.Contains("WorkerEntry", StringComparison.Ordinal));
+            if (workerEntry is { Name.Length: > 0 })
+            {
+                break;
+            }
+        }
+
+        Assert.True(workerEntry is { Name.Length: > 0 }, "expected a ThreadStart delegate bound to WorkerEntry");
+        DelegateEntry entry = workerEntry!.Value;
+        Assert.Equal("SosHarnessScenarios.WorkerEntry()", entry.Name);
+        Assert.NotEqual(0ul, entry.Method);
+    }
+}
