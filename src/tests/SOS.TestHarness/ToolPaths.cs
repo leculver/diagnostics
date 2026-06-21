@@ -8,8 +8,10 @@ namespace SOS.TestHarness;
 /// own build outputs (so the harness always validates freshly-built SOS, not a stale machine-wide
 /// install):
 /// <list type="bullet">
-///   <item><c>dbgeng.dll</c> comes from the restored <c>cdb-sos</c> NuGet package (the same one the
-///   legacy <c>SOS.UnitTests</c> uses) — no WinDbg install needed.</item>
+///   <item><c>dbgeng.dll</c> comes from the restored <c>Microsoft.Debugging.DbgEng.Core</c> NuGet package
+///   (full engine + <c>winext</c> extension gallery, so <c>!address</c>-class gallery commands work),
+///   falling back to the stripped <c>cdb-sos</c> package if the full one is absent — no WinDbg install
+///   needed.</item>
 ///   <item>Native <c>sos.dll</c> comes from the repo's native build output.</item>
 ///   <item><c>dotnet-dump</c> is the repo-built tool, run as <c>dotnet dotnet-dump.dll</c>.</item>
 /// </list>
@@ -17,9 +19,10 @@ namespace SOS.TestHarness;
 public static class ToolPaths
 {
     /// <summary>
-    /// Directory containing <c>dbgeng.dll</c> (+ dbghelp/dbgcore/dbgmodel/symsrv), taken from the
-    /// restored <c>cdb-sos</c> package at
-    /// <c>&lt;pkgRoot&gt;/cdb-sos/&lt;ver&gt;/runtimes/win-&lt;arch&gt;/native</c>.
+    /// Directory containing <c>dbgeng.dll</c> (+ dbghelp/dbgcore/dbgmodel/symsrv and the <c>winext</c>
+    /// gallery), taken from the restored <c>Microsoft.Debugging.DbgEng.Core</c> package at
+    /// <c>&lt;pkgRoot&gt;/microsoft.debugging.dbgeng.core/&lt;ver&gt;/tools/&lt;arch&gt;</c> (falling back to
+    /// the cdb-sos package's <c>runtimes/win-&lt;arch&gt;/native</c>).
     /// </summary>
     public static string DbgEngDirectory { get; } = ResolveDbgEngDirectory();
 
@@ -41,6 +44,30 @@ public static class ToolPaths
 
     private static string ResolveDbgEngDirectory()
     {
+        // Prefer the full DbgEng payload (Microsoft.Debugging.DbgEng.Core): its tools/<arch> directory
+        // ships dbgeng.dll alongside the winext extension gallery, so !address-class gallery commands
+        // (used by !maddress/!gctonative/!findpointersin/!notreachableinrange) resolve. The stripped
+        // cdb-sos engine has no gallery; we keep it only as a fallback when the full package is absent.
+        string dbgEngCoreArch = DbgEngCoreArch();
+        foreach (string root in NuGetPackageRoots())
+        {
+            string pkg = Path.Combine(root, "microsoft.debugging.dbgeng.core");
+            if (!Directory.Exists(pkg))
+            {
+                continue;
+            }
+
+            foreach (string versionDir in Directory.GetDirectories(pkg).OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase))
+            {
+                string tools = Path.Combine(versionDir, "tools", dbgEngCoreArch);
+                if (File.Exists(Path.Combine(tools, "dbgeng.dll")))
+                {
+                    return tools;
+                }
+            }
+        }
+
+        // Fallback: the stripped cdb-sos engine (no extension gallery).
         string relativeNative = Path.Combine("runtimes", $"win-{RepoLayout.TargetArch}", "native");
 
         foreach (string root in NuGetPackageRoots())
@@ -63,9 +90,23 @@ public static class ToolPaths
         }
 
         throw new FileNotFoundException(
-            "Could not locate dbgeng.dll from the cdb-sos package. Restore SOS.UnitTests (or the harness " +
-            "test project) so the cdb-sos PackageDownload populates the NuGet cache.");
+            "Could not locate dbgeng.dll from the Microsoft.Debugging.DbgEng.Core package (preferred) or the " +
+            "cdb-sos package (fallback). Restore the harness test project so the DbgEng.Core PackageDownload " +
+            "populates the NuGet cache.");
     }
+
+    /// <summary>
+    /// Maps the process architecture to the arch token the Microsoft.Debugging.DbgEng.Core package uses
+    /// for its <c>tools/&lt;arch&gt;</c> layout (<c>amd64</c>/<c>arm64</c>/<c>x86</c>) — note this differs
+    /// from the <c>x64</c> token used in repo/cdb-sos paths.
+    /// </summary>
+    private static string DbgEngCoreArch() => RepoLayout.TargetArch switch
+    {
+        "x64" => "amd64",
+        "arm64" => "arm64",
+        "x86" => "x86",
+        _ => "amd64",
+    };
 
     private static string ResolveSosPath()
     {

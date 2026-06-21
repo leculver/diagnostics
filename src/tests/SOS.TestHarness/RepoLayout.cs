@@ -72,6 +72,17 @@ public static class RepoLayout
     /// </summary>
     public static string SymbolCache { get; } = Path.Combine(Scratch, "symcache");
 
+    /// <summary>
+    /// A still-sealed, fully harness-constructed symbol path that adds the PUBLIC <c>msdl</c> symbol
+    /// server on top of the local cache — for the handful of tests that need OS symbols (e.g.
+    /// <c>ntdll.pdb</c> for the <c>!address</c>/<c>!maddress</c> family). Like <see cref="SymbolCache"/>
+    /// it never inherits the dev's ambient <c>_NT_SYMBOL_PATH</c>; it is exactly the local cache followed
+    /// by a downstream <c>msdl</c> store (anonymous/public — never <c>symweb</c>, never arbitrary paths),
+    /// so it stays predictable. Works on any box with outbound HTTPS; CI (no egress) skips these tests.
+    /// </summary>
+    public static string PublicSymbolCache { get; } =
+        SymbolCache + ";srv*" + SymbolCache + "*https://msdl.microsoft.com/download/symbols";
+
     private static string FindRoot()
     {
         string? dir = AppContext.BaseDirectory;

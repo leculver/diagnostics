@@ -101,6 +101,13 @@ public abstract class DbgEngHostBase : IDebuggerHost
         if (!string.IsNullOrEmpty(dacDir))
         {
             RunCore($".cordll -ve -u -lp {dacDir}");
+
+            // .cordll touches the managed runtime, which makes a gallery-capable engine (the
+            // Microsoft.Debugging.DbgEng.Core payload) lazily auto-load its OWN bundled SOS
+            // (winext\sos\sos.dll). If that happens between the unload above and our .load below,
+            // our explicit .load collides on the extension name "sos" and the gallery copy wins -
+            // so re-assert a clean chain here, after .cordll, right before loading ours.
+            EnsureNoSosLoaded();
         }
 
         RunCore($".load {ToolPaths.SosPath}");

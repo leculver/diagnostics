@@ -23,4 +23,11 @@
     <PackageReference Include="xunit.v3.extensibility.core" Version="$(XUnitV3Version)" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <!-- Full DbgEng payload (dbgeng.dll + winext extension gallery) the cdb hosts load at runtime via
+         ToolPaths.DbgEngDirectory. Supplies the !address-class gallery commands the stripped cdb-sos
+         engine lacks. PackageDownload (not a compile reference): we only need it restored on disk. -->
+    <PackageDownload Include="Microsoft.Debugging.DbgEng.Core" Version="[$(MicrosoftDebuggingDbgEngCoreVersion)]" />
+  </ItemGroup>
+
 </Project>

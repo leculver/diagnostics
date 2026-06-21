@@ -6,11 +6,12 @@ namespace SOS.TestHarness;
 /// <summary>Creates the concrete host for a given host kind.</summary>
 internal static class HostFactory
 {
-    /// <summary>A dump-backed host (shared, read-only).</summary>
-    public static IDebuggerHost CreateDumpHost(Host host, Flavor flavor, string dumpPath) => host switch
+    /// <summary>A dump-backed host (shared, read-only). <paramref name="publicSymbols"/> opts a cdb host
+    /// into the sealed public-msdl symbol path for OS-symbol-dependent commands (e.g. <c>!maddress</c>).</summary>
+    public static IDebuggerHost CreateDumpHost(Host host, Flavor flavor, string dumpPath, bool publicSymbols = false) => host switch
     {
         // cdb runs dbgeng in a CHILD process (EngineHost), so the test host never loads dbgeng.
-        Host.Cdb => ChildEngineClient.ForDump(host.ToString().ToLowerInvariant(), dumpPath, DacDirFor(flavor)),
+        Host.Cdb => ChildEngineClient.ForDump(host.ToString().ToLowerInvariant(), dumpPath, DacDirFor(flavor), publicSymbols),
         Host.DotnetDump => new DotNetDumpHost(dumpPath),
         Host.Lldb => throw new NotSupportedException("lldb host is not implemented in this PoC."),
         _ => throw new ArgumentException($"Unknown host '{host}'."),

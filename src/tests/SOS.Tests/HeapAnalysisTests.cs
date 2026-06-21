@@ -10,8 +10,7 @@ namespace SOS.Tests;
 /// Whole-heap analysis commands: <c>!sizestats</c> (per-generation size histogram), <c>!traverseheap</c>
 /// (writes the heap graph to a CLR-Profiler file), and the ephemeral-reference scans <c>!ephrefs</c> /
 /// <c>!ephtoloh</c>. (The native memory-region commands <c>!maddress</c>/<c>!gctonative</c>/
-/// <c>!findpointersin</c>/<c>!notreachableinrange</c> depend on the debugger's <c>!address</c> service and
-/// are deferred — see DecisionPoints.)
+/// <c>!findpointersin</c>/<c>!notreachableinrange</c> live in <see cref="NativeAddressSpaceTests"/>.)
 /// </summary>
 public sealed class HeapAnalysisTests
 {

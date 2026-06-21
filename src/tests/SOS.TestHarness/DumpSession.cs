@@ -27,6 +27,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     private readonly bool _pooled;       // dotnet-dump: route through the single slot
     private readonly HostSlot? _slot;
     private readonly object _gate = new(); // serializes concurrent commands on this shared child
+    private readonly bool _publicSymbols;  // cdb: use the sealed public-msdl symbol path (OS-symbol tests)
     private IDebuggerHost? _host;        // kept-alive host for non-pooled (cdb child) targets
 
     public Host Host { get; }
@@ -35,7 +36,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     public Flavor Flavor { get; }
     public string DumpPath { get; }
 
-    internal DumpSession(Host hostKind, string targetName, string stopName, Flavor flavor, string dumpPath)
+    internal DumpSession(Host hostKind, string targetName, string stopName, Flavor flavor, string dumpPath, bool publicSymbols = false)
     {
         _hostKind = hostKind;
         Host = hostKind;
@@ -43,6 +44,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
         StopName = stopName;
         Flavor = flavor;
         DumpPath = dumpPath;
+        _publicSymbols = publicSymbols;
 
         // dotnet-dump children spin on stdin -> bound to one via the slot. cdb children block
         // when idle -> keep alive concurrently (no slot), which is the subprocess-backend payoff.
@@ -51,7 +53,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
         if (!_pooled)
         {
-            _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath);
+            _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath, _publicSymbols);
             _host.LoadSos();
         }
     }
@@ -84,7 +86,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
     void IPooledHost.OpenHost()
     {
-        _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath);
+        _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath, _publicSymbols);
         _host.LoadSos();
     }
 

@@ -26,7 +26,7 @@ public sealed class ChildEngineClient : IDebuggerHost
 
     public string Name { get; }
 
-    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir)
+    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir, bool publicSymbols)
     {
         Name = name;
 
@@ -46,10 +46,13 @@ public sealed class ChildEngineClient : IDebuggerHost
             psi.ArgumentList.Add(a);
         }
 
-        // Hermetic, local-only symbols (the dev's _NT_SYMBOL_PATH may point at the Azure-authed symweb,
-        // which crashes SOS host init and makes tests network-dependent).
+        // _NT_SYMBOL_PATH is ALWAYS fully replaced with a harness-constructed value - never inherited
+        // (the dev's ambient _NT_SYMBOL_PATH may point at the Azure-authed symweb, which crashes SOS host
+        // init and makes tests network-dependent). Default is the hermetic local cache only; the sealed
+        // public-symbols carveout adds ONLY the public msdl server (for OS-symbol-dependent commands like
+        // !maddress) and is still fully harness-constructed.
         Directory.CreateDirectory(RepoLayout.SymbolCache);
-        string symbolPath = RepoLayout.SymbolCache;
+        string symbolPath = publicSymbols ? RepoLayout.PublicSymbolCache : RepoLayout.SymbolCache;
 
         // For self-contained single-file the runtime (coreclr.dll) and the DAC (mscordaccore.dll) are
         // bundled in the exe, so dbgeng can't find them on disk. Point it at the runtime pack that has
@@ -57,7 +60,7 @@ public sealed class ChildEngineClient : IDebuggerHost
         // EngineHost runs `.cordll -lp <dir>` (DAC load path) before `.load sos`.
         if (!string.IsNullOrEmpty(dacDir))
         {
-            symbolPath = RepoLayout.SymbolCache + ";" + dacDir;
+            symbolPath += ";" + dacDir;
             psi.Environment["_NT_EXECUTABLE_IMAGE_PATH"] = dacDir;
             psi.Environment["SOSHARNESS_DAC_DIR"] = dacDir;
         }
@@ -74,12 +77,12 @@ public sealed class ChildEngineClient : IDebuggerHost
     }
 
     /// <summary>A child engine over a crash/snapshot dump.</summary>
-    public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null) =>
-        new(hostName, "dump", new[] { dumpPath }, dacDir);
+    public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null, bool publicSymbols = false) =>
+        new(hostName, "dump", new[] { dumpPath }, dacDir, publicSymbols);
 
     /// <summary>A live child engine that launches the target (parked at the loader break, SOS loaded).</summary>
     public static ChildEngineClient ForLive(string hostName, string exePath, string? dacDir = null) =>
-        new(hostName, "live", new[] { exePath }, dacDir);
+        new(hostName, "live", new[] { exePath }, dacDir, publicSymbols: false);
 
     public void LoadSos()
     {

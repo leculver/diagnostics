@@ -12,11 +12,13 @@ namespace SOS.TestHarness;
 /// </summary>
 public sealed class DeadTarget : Target
 {
+    private readonly bool _publicSymbols;
     private DumpSession? _current;
 
-    internal DeadTarget(Host host, string targetName, Flavor flavor)
+    internal DeadTarget(Host host, string targetName, Flavor flavor, bool publicSymbols = false)
         : base(host, targetName, flavor)
     {
+        _publicSymbols = publicSymbols;
     }
 
     public override string DumpPath => Current.DumpPath;
@@ -24,13 +26,13 @@ public sealed class DeadTarget : Target
     protected override void GoToStopPointCore(string stopName)
     {
         StopPoint stop = TargetCatalog.Get(TargetName).Stop(stopName);
-        _current = Targets.ResolveSession(Host, TargetName, Flavor, stop.Name);
+        _current = Targets.ResolveSession(Host, TargetName, Flavor, stop.Name, _publicSymbols);
     }
 
     protected override void GoToCrashCore()
     {
         StopPoint crash = TargetCatalog.Get(TargetName).StopPoints.Single(s => s.Kind == StopKind.Crash);
-        _current = Targets.ResolveSession(Host, TargetName, Flavor, crash.Name);
+        _current = Targets.ResolveSession(Host, TargetName, Flavor, crash.Name, _publicSymbols);
     }
 
     protected override SosOutput SosCore(string command) => Current.Sos(command);

@@ -19,7 +19,7 @@ namespace SOS.TestHarness;
 /// </summary>
 public static class Targets
 {
-    private static readonly ConcurrentDictionary<(Host Host, string Target, string Stop, Flavor Flavor), Lazy<DumpSession>> s_sessions = new();
+    private static readonly ConcurrentDictionary<(Host Host, string Target, string Stop, Flavor Flavor, bool PublicSymbols), Lazy<DumpSession>> s_sessions = new();
     private static readonly ConcurrentBag<DumpSession> s_created = new();
 
     static Targets()
@@ -37,7 +37,7 @@ public static class Targets
     /// <see cref="Liveness.Dump"/> (the per-case value a theory receives); the combined
     /// <see cref="Liveness.AllValid"/> is a matrix selector, not a single target, and throws.
     /// </summary>
-    public static Task<Target> GetTargetAsync(string target, Host host, Flavor flavor, Liveness liveness)
+    public static Task<Target> GetTargetAsync(string target, Host host, Flavor flavor, Liveness liveness, bool publicSymbols = false)
     {
         bool live = liveness switch
         {
@@ -54,6 +54,11 @@ public static class Targets
 
         if (live)
         {
+            if (publicSymbols)
+            {
+                throw new ArgumentException("publicSymbols is only supported for dump (dead) targets.", nameof(publicSymbols));
+            }
+
             return Task.Run<Target>(() => {
                 string exe = SnapshotStore.TargetExe(flavor, target);
                 return new LiveTarget(host, definition, flavor, exe);
@@ -62,24 +67,24 @@ public static class Targets
 
         // Dead targets are cheap cursors; the heavy work (capture + load) happens on first GoTo,
         // memoized per point so parallel tests navigating to the same point share one dump host.
-        return Task.FromResult<Target>(new DeadTarget(host, target, flavor));
+        return Task.FromResult<Target>(new DeadTarget(host, target, flavor, publicSymbols));
     }
 
     /// <summary>
     /// Resolve (memoized, process-wide) the read-only dump session for one point — produced and SOS
     /// loaded on first use, then reused by every <see cref="DeadTarget"/> that navigates here.
     /// </summary>
-    internal static DumpSession ResolveSession(Host host, string target, Flavor flavor, string stop)
+    internal static DumpSession ResolveSession(Host host, string target, Flavor flavor, string stop, bool publicSymbols = false)
     {
         return s_sessions
-            .GetOrAdd((host, target, stop, flavor), key => new Lazy<DumpSession>(() => CreateSession(key)))
+            .GetOrAdd((host, target, stop, flavor, publicSymbols), key => new Lazy<DumpSession>(() => CreateSession(key)))
             .Value;
     }
 
-    private static DumpSession CreateSession((Host Host, string Target, string Stop, Flavor Flavor) key)
+    private static DumpSession CreateSession((Host Host, string Target, string Stop, Flavor Flavor, bool PublicSymbols) key)
     {
         string dump = SnapshotStore.GetDump(key.Flavor, key.Target, key.Stop);
-        DumpSession session = new(key.Host, key.Target, key.Stop, key.Flavor, dump);
+        DumpSession session = new(key.Host, key.Target, key.Stop, key.Flavor, dump, key.PublicSymbols);
         s_created.Add(session);
         return session;
     }
