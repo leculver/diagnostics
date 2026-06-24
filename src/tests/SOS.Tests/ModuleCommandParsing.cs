@@ -80,6 +80,10 @@ public sealed class DumpDomainResult
         new(@"^Assembly:\s+([0-9a-fA-F`]+)\s+\[(.*)\]\s*$", RegexOptions.Compiled);
     private static readonly Regex s_moduleRow =
         new(@"^\s+([0-9a-fA-F`]+)\s+(.+?)\s*$", RegexOptions.Compiled);
+    // A module whose address printed but whose name was pushed onto a later line by interleaved engine
+    // noise (see the banner handling in Parse) - i.e. an indented bare hex address with no name.
+    private static readonly Regex s_moduleAddrOnly =
+        new(@"^\s+([0-9a-fA-F`]+)\s*$", RegexOptions.Compiled);
     private static readonly Regex s_field = new(@"^([A-Za-z][A-Za-z ]+?):\s+(.*?)\s*$", RegexOptions.Compiled);
 
     public DumpDomainResult(SosOutput output)
@@ -130,6 +134,7 @@ public sealed class DumpDomainResult
         List<ModuleRef>? currentModules = null;
         ulong currentAssemblyAddr = 0;
         string? currentAssemblyPath = null;
+        ulong? pendingModuleAddr = null; // a module address awaiting its name on a later (noise-separated) line
         bool inDomain = false;
 
         void FlushAssembly()
@@ -157,6 +162,17 @@ public sealed class DumpDomainResult
         {
             string line = raw.TrimEnd();
             if (line.Length == 0 || line.StartsWith("---", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // The full DbgEng.Core engine interleaves dbgeng symbol-warning banners onto the NORMAL
+            // output channel while resolving the single-file primary module's name - a "*** WARNING:
+            // Unable to verify checksum ..." line and, without OS symbols, an "ntdll!PEB ... ***" /
+            // "*** ... ***" unqualified-symbol box. These split the module's address from its name. The
+            // stripped cdb-sos engine didn't emit them. Drop the banner lines (they start with '*' or, for
+            // the box header rows, end with "***"); the address/name split is rejoined via pendingModuleAddr.
+            if (line.StartsWith("*", StringComparison.Ordinal) || line.EndsWith("***", StringComparison.Ordinal))
             {
                 continue;
             }
@@ -208,6 +224,24 @@ public sealed class DumpDomainResult
                     currentModules!.Add(new ModuleRef(ParseHex(mod.Groups[1].Value), mod.Groups[2].Value.Trim()));
                     continue;
                 }
+
+                // Address printed with no name on this line - its name was pushed to a later line by the
+                // engine banner noise above; remember the address and pick up the name when it arrives.
+                Match addrOnly = s_moduleAddrOnly.Match(line);
+                if (addrOnly.Success)
+                {
+                    pendingModuleAddr = ParseHex(addrOnly.Groups[1].Value);
+                    continue;
+                }
+            }
+
+            // The name line for a module whose address we saw earlier (single-file primary module). It is
+            // not indented and matches none of the structural rows above, so resolve it here.
+            if (pendingModuleAddr is ulong pendingAddr && currentModules is not null)
+            {
+                currentModules.Add(new ModuleRef(pendingAddr, line.Trim()));
+                pendingModuleAddr = null;
+                continue;
             }
 
             Match field = s_field.Match(line);
