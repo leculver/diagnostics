@@ -18,13 +18,13 @@ public sealed class ClrStackAllThreadsTests
 {
     private const int ExpectedWorkers = 3;
 
-    public static TheoryData<Host, Flavor, Liveness> Matrix { get; } = Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix { get; } = TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrStack_AllThreads(Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_AllThreads(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopAllThreads);
 
         IReadOnlyList<TargetExtensions.ThreadStack> threads = target.ClrstackAllThreads();

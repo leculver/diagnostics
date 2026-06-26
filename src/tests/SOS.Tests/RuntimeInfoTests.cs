@@ -16,14 +16,14 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class RuntimeInfoTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task EeVersion_ReportsRuntimeAndSosVersion(Host host, Flavor flavor, Liveness liveness)
+    public async Task EeVersion_ReportsRuntimeAndSosVersion(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput ee = target.Sos("eeversion");
@@ -33,9 +33,9 @@ public sealed class RuntimeInfoTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrModulesAndAssemblies_ListDebuggeeModule(Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrModulesAndAssemblies_ListDebuggeeModule(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // The CLR module list and the assembly list both include the debuggee, on every host.
@@ -45,11 +45,11 @@ public sealed class RuntimeInfoTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task Modules_Registers_Threads_DotnetDumpOnly(Host host, Flavor flavor, Liveness liveness)
+    public async Task Modules_Registers_Threads_DotnetDumpOnly(TestConfig config)
     {
         // modules, registers and threads are provided by the dotnet-dump REPL; the dbgeng (cdb) host uses
         // the native debugger's lm / r / ~ instead, so these names exist only under dotnet-dump.
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         target.Sos("modules").AssertContains("SosHarnessScenarios");
@@ -63,9 +63,9 @@ public sealed class RuntimeInfoTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task Runtimes_ReportsLoadedRuntime(Host host, Flavor flavor, Liveness liveness)
+    public async Task Runtimes_ReportsLoadedRuntime(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput runtimes = target.Sos("runtimes");
@@ -75,9 +75,9 @@ public sealed class RuntimeInfoTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpRuntimeTypes_ListsRuntimeTypeObjects(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpRuntimeTypes_ListsRuntimeTypeObjects(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput types = target.Sos("dumpruntimetypes");

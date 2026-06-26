@@ -35,8 +35,8 @@ public sealed class ClrStackTests
     //   AsyncMain              - async state-machine frames
     //   DynamicMethod          - a dynamic (IL-emitted) method on the stack
     //   Scenarios              - snapshot (marker) stop rather than a crash
-    public static TheoryData<string, Host, Flavor, Liveness> RegistersMatrix { get; }
-        = Targets.BuildMatrix(
+    public static TheoryData<TestConfig> RegistersMatrix { get; }
+        = TestConfig.BuildMatrix(
             [
                 TargetCatalog.NestedException,
                 TargetCatalog.DivZero,
@@ -47,9 +47,9 @@ public sealed class ClrStackTests
 
     [Theory]
     [MemberData(nameof(RegistersMatrix))]
-    public async Task ClrStack_Registers(string targetName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_Registers(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         SosTable table = target.ClrstackRegisters();
@@ -95,18 +95,27 @@ public sealed class ClrStackTests
     // root shapes, both BEFORE any GC.Collect so the live path is safe:
     //   roots      - a normal object + a pinned byte[] + an interior int[] ref live across the marker
     //   argslocals - a uniquely-typed reference arg and local live across the marker
-    public static TheoryData<string, Host, Flavor, Liveness> GcRootsMatrix { get; }
-        = Targets.BuildMatrix(
-            [
-                TargetCatalog.StopRoots,
-                TargetCatalog.StopArgsLocals,
-            ]);
+    public static TheoryData<TestConfig, string> GcRootsMatrix { get; } = BuildGcRootsMatrix();
+
+    // The stop point is an extra (non-axis) column paired with each config, so this is built by hand from
+    // the raw config permutations rather than the single-column BuildMatrix.
+    private static TheoryData<TestConfig, string> BuildGcRootsMatrix()
+    {
+        TheoryData<TestConfig, string> data = new();
+        foreach (TestConfig config in TestConfig.Permutations([TargetCatalog.Scenarios]))
+        {
+            data.Add(config, TargetCatalog.StopRoots);
+            data.Add(config, TargetCatalog.StopArgsLocals);
+        }
+
+        return data;
+    }
 
     [Theory]
     [MemberData(nameof(GcRootsMatrix))]
-    public async Task ClrStack_GcRoots(string stopName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_GcRoots(TestConfig config, string stopName)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(stopName);
 
         // The objects dumpstackobjects finds by scanning stack memory.
@@ -143,13 +152,13 @@ public sealed class ClrStackTests
     // the marker, so the parser's handling of the optional (pinned)/(interior) flags and the
     // sometimes-absent type is actually exercised — and so we can assert the SosDataRow always
     // carries Pinned/Interior (defaulting to False when the flag isn't printed).
-    public static TheoryData<Host, Flavor, Liveness> GcRootsFlagMatrix { get; } = Targets.BuildMatrix();
+    public static TheoryData<TestConfig> GcRootsFlagMatrix { get; } = TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(GcRootsFlagMatrix))]
-    public async Task ClrStack_GcRoots_Flags(Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_GcRoots_Flags(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint("roots");
 
         SosTable gc = target.ClrstackGcRoots();

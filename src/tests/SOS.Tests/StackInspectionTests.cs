@@ -15,15 +15,15 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class StackInspectionTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> CdbMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.Cdb);
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> CdbMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpStackObjects_ListsStackRoots(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpStackObjects_ListsStackRoots(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopArgsLocals);
 
         // The argument and local marker objects of ArgsLocalsMethod are live on the current thread's stack.
@@ -42,9 +42,9 @@ public sealed class StackInspectionTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task ParallelStacks_GroupsThreadsByCallStack(Host host, Flavor flavor, Liveness liveness)
+    public async Task ParallelStacks_GroupsThreadsByCallStack(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopArgsLocals);
 
         // parallelstacks is a managed extension command that only the dotnet-dump host exports.
@@ -55,9 +55,9 @@ public sealed class StackInspectionTests
 
     [Theory]
     [MemberData(nameof(CdbMatrix))]
-    public async Task DumpStack_WalksNativeAndManagedFrames(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpStack_WalksNativeAndManagedFrames(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopArgsLocals);
 
         SosOutput stack = target.Sos("dumpstack");
@@ -67,9 +67,9 @@ public sealed class StackInspectionTests
 
     [Theory]
     [MemberData(nameof(CdbMatrix))]
-    public async Task EeStack_WalksAllThreads(Host host, Flavor flavor, Liveness liveness)
+    public async Task EeStack_WalksAllThreads(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopArgsLocals);
 
         // eestack is dumpstack across every managed thread, so the args/locals frame still appears.

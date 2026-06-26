@@ -14,14 +14,14 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DiagnosticCommandTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpGcData_ReportsGcStatistics(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpGcData_ReportsGcStatistics(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         target.Sos("dumpgcdata").AssertContains("concurrent GCs");
@@ -29,9 +29,9 @@ public sealed class DiagnosticCommandTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task SosStatus_ReportsTargetAndRuntime(Host host, Flavor flavor, Liveness liveness)
+    public async Task SosStatus_ReportsTargetAndRuntime(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput status = target.Sos("sosstatus");
@@ -41,9 +41,9 @@ public sealed class DiagnosticCommandTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task Logging_ReportsState(Host host, Flavor flavor, Liveness liveness)
+    public async Task Logging_ReportsState(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // logging reports the internal-logging state (a native SOS command, both hosts).
@@ -52,9 +52,9 @@ public sealed class DiagnosticCommandTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task LogOpenClose_CyclesConsoleLog(Host host, Flavor flavor, Liveness liveness)
+    public async Task LogOpenClose_CyclesConsoleLog(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // logopen/logclose are managed extension commands (the dbgeng host uses native .logopen instead).
@@ -72,9 +72,9 @@ public sealed class DiagnosticCommandTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task Clrma_DrivesManagedAnalysis(Host host, Flavor flavor, Liveness liveness)
+    public async Task Clrma_DrivesManagedAnalysis(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // clrma drives the CLRMA provider (used by Watson / !analyze) and prints the managed thread analysis.

@@ -15,13 +15,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ObjectInspectionTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpObj_Mt_Class_Md_Chain(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpObj_Mt_Class_Md_Chain(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         ulong marker = target.FindUniqueObject("ThinLockMarker");
@@ -62,9 +62,9 @@ public sealed class ObjectInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpObj_NoFields_OmitsFieldTable(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpObj_NoFields_OmitsFieldTable(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         ulong marker = target.FindUniqueObject("FieldMarker");
@@ -79,13 +79,13 @@ public sealed class ObjectInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task Ip2md_ResolvesJittedMethodWithSource(Host host, Flavor flavor, Liveness liveness)
+    public async Task Ip2md_ResolvesJittedMethodWithSource(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // AtHeap() raises the heap stop, so it is jitted; name2ee gives us its native entry point.
-        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(flavor);
+        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(config.Flavor);
         EEMatch atHeap = target.Name2EE($"{moduleName}!SosHarnessScenarios.AtHeap").Single;
         Assert.NotNull(atHeap.JittedCodeAddress);
 

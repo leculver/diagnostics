@@ -17,8 +17,8 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ClrStackFullTests
 {
-    public static TheoryData<string, Host, Flavor, Liveness> Matrix { get; }
-        = Targets.BuildMatrix(
+    public static TheoryData<TestConfig> Matrix { get; }
+        = TestConfig.BuildMatrix(
             [
                 TargetCatalog.SimpleThrow,
                 TargetCatalog.DivZero,
@@ -27,9 +27,9 @@ public sealed class ClrStackFullTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrStack_Full(string targetName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_Full(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         SosTable plain = target.Clrstack();
@@ -54,7 +54,7 @@ public sealed class ClrStackFullTests
         // -f renders managed frames assembly-qualified (Assembly.dll!Method + offset).
         Assert.Contains(full, f => f.IsManaged);
 
-        bool nativeHost = host == Host.Cdb || host == Host.Lldb;
+        bool nativeHost = config.Host == Host.Cdb || config.Host == Host.Lldb;
         if (nativeHost)
         {
             // Native interleaving: strictly more frames than plain, with real native runtime frames.

@@ -17,7 +17,7 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpModuleTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     // Uniquely-named public types the debuggee defines; stable across flavors (same source).
     private static readonly string[] s_markerTypes =
@@ -27,12 +27,12 @@ public sealed class DumpModuleTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpModule_Structure(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpModule_Structure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
-        (AssemblyInfo assembly, ModuleRef module) = FindDebuggeeModule(target, flavor);
+        (AssemblyInfo assembly, ModuleRef module) = FindDebuggeeModule(target, config.Flavor);
         DumpModuleResult dump = target.DumpModule(module.Address);
 
         // dumpmodule's Name carries the same module file dumpdomain reported (single-file prints just the
@@ -47,12 +47,12 @@ public sealed class DumpModuleTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpModule_Types(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpModule_Types(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
-        (_, ModuleRef module) = FindDebuggeeModule(target, flavor);
+        (_, ModuleRef module) = FindDebuggeeModule(target, config.Flavor);
         DumpModuleResult dump = target.DumpModule(module.Address, includeTypes: true);
 
         Assert.NotEmpty(dump.TypesDefined);   // guard: -mt must have actually produced the table

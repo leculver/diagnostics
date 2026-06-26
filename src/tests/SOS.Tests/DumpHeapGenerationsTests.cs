@@ -17,13 +17,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpHeapGenerationsTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpHeap_GenerationsAndRegions(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpHeap_GenerationsAndRegions(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         EeHeap ee = target.EeHeap();
@@ -36,7 +36,7 @@ public sealed class DumpHeapGenerationsTests
         AssertGenerationContainsItsObjects(target, ee, GcGeneration.Gen1, requireNonEmpty: false);
         AssertGenerationContainsItsObjects(target, ee, GcGeneration.Gen2, requireNonEmpty: false);
         AssertGenerationContainsItsObjects(target, ee, GcGeneration.Loh, requireNonEmpty: true);
-        if (flavor != Flavor.Framework)
+        if (config.Flavor != Flavor.Framework)
         {
             AssertGenerationContainsItsObjects(target, ee, GcGeneration.Poh, requireNonEmpty: true);
         }

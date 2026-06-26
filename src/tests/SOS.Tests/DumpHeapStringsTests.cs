@@ -15,13 +15,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpHeapStringsTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.NestedException]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpHeap_Strings(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpHeap_Strings(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.NestedException, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         // -strings: a per-object listing of string objects, then the value summary.

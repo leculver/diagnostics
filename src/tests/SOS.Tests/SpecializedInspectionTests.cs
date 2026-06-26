@@ -16,15 +16,15 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class SpecializedInspectionTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
-    public static TheoryData<Host, Flavor, Liveness> CoreRuntimeMatrix => Targets.BuildMatrix(Flavor.Core | Flavor.SingleFile);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> CoreRuntimeMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile);
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task TimerInfo_ReportsRegisteredTimer(Host host, Flavor flavor, Liveness liveness)
+    public async Task TimerInfo_ReportsRegisteredTimer(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // timerinfo is a managed extension command (dotnet-dump only). The debuggee keeps a long-due-time
@@ -34,9 +34,9 @@ public sealed class SpecializedInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ThreadPool_ReportsWorkerStats(Host host, Flavor flavor, Liveness liveness)
+    public async Task ThreadPool_ReportsWorkerStats(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // A parked work item has initialised the pool, so its worker stats are reportable.
@@ -47,9 +47,9 @@ public sealed class SpecializedInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task SyncBlk_ReportsInflatedMonitor(Host host, Flavor flavor, Liveness liveness)
+    public async Task SyncBlk_ReportsInflatedMonitor(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // The contended s_fatLock is inflated, so syncblk lists a held sync block (MonitorHeld > 0).
@@ -62,9 +62,9 @@ public sealed class SpecializedInspectionTests
 
     [Theory]
     [MemberData(nameof(CoreRuntimeMatrix))]
-    public async Task DumpAsync_ShowsSuspendedStateMachine(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpAsync_ShowsSuspendedStateMachine(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // The SuspendedAsync state machine is parked at its await, so dumpasync finds it. (dumpasync walks
@@ -74,9 +74,9 @@ public sealed class SpecializedInspectionTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task Dcd_DumpsConcurrentDictionary(Host host, Flavor flavor, Liveness liveness)
+    public async Task Dcd_DumpsConcurrentDictionary(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // dcd is a managed extension command (dotnet-dump only).

@@ -21,12 +21,17 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class NativeAddressSpaceTests
 {
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
+
+    // The OS-symbol Facts run against one fixed configuration: a cdb dump of the Core Scenarios target with
+    // the public-symbol carveout enabled.
+    private static readonly TestConfig s_osSymbolConfig =
+        new(TargetCatalog.Scenarios, Host.Cdb, Flavor.Core, Liveness.Dump, publicSymbols: true);
 
     [FactRequiresOSSymbols]
     public async Task MAddress_SummarizesAddressSpace()
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, Host.Cdb, Flavor.Core, Liveness.Dump, publicSymbols: true);
+        using Target target = await Targets.GetTargetAsync(s_osSymbolConfig);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // -summary collapses the per-region rows into a per-kind histogram with a grand total. The CLR
@@ -42,7 +47,7 @@ public sealed class NativeAddressSpaceTests
     [FactRequiresOSSymbols]
     public async Task FindPointersIn_ScansRegionForGcPointers()
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, Host.Cdb, Flavor.Core, Liveness.Dump, publicSymbols: true);
+        using Target target = await Targets.GetTargetAsync(s_osSymbolConfig);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // Managed-only command -> dispatch via the !sos prefix under cdb. Stack regions always carry GC
@@ -55,7 +60,7 @@ public sealed class NativeAddressSpaceTests
     [FactRequiresOSSymbols]
     public async Task GcToNative_WalksHeapForNativePointers()
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, Host.Cdb, Flavor.Core, Liveness.Dump, publicSymbols: true);
+        using Target target = await Targets.GetTargetAsync(s_osSymbolConfig);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput result = target.Sos("sos gctonative Stack");
@@ -65,9 +70,9 @@ public sealed class NativeAddressSpaceTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task NotReachableInRange_ScansPointerRange(Host host, Flavor flavor, Liveness liveness)
+    public async Task NotReachableInRange_ScansPointerRange(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // notreachableinrange treats [start,end) as an array of object pointers (it backs !finalizerqueue)

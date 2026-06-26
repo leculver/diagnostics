@@ -35,8 +35,8 @@ public static class SnapshotStore
     // One build/publish per (flavor, target) (distinct output dirs); thread-safe via Lazy.
     private static readonly ConcurrentDictionary<(Flavor Flavor, string Target), Lazy<string>> s_targetExe = new();
 
-    // One capture per (flavor, target) (distinct dump dirs); thread-safe via Lazy.
-    private static readonly ConcurrentDictionary<(Flavor Flavor, string Target), Lazy<string>> s_captured = new();
+    // One capture per (flavor, target, gcType, dumpKind) (distinct dump dirs); thread-safe via Lazy.
+    private static readonly ConcurrentDictionary<(Flavor Flavor, string Target, GcType GcType, DumpKind DumpKind), Lazy<string>> s_captured = new();
 
     // The out-of-process desktop capturer, located/built once.
     private static readonly Lazy<string> s_capturerDll = new(() => SubprocessDll("SOS.TestHarness.Capturer"));
@@ -49,21 +49,21 @@ public static class SnapshotStore
     /// <summary>Path to the built EngineHost.dll (the subprocess dbgeng backend), produced on first use.</summary>
     public static string EngineHostDll => s_engineHostDll.Value;
 
-    /// <summary>Path to the dump for one stop point of a target in a flavor, producing it on first use.</summary>
-    public static string GetDump(Flavor flavor, string targetName, string stopName)
+    /// <summary>Path to the dump for one stop point of a target in a flavor/GC/dump-kind, producing it on first use.</summary>
+    public static string GetDump(Flavor flavor, string targetName, string stopName, GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Full)
     {
         TargetDefinition target = TargetCatalog.Get(targetName);
         target.Stop(stopName); // validate
 
         string dumpDir = s_captured
-            .GetOrAdd((flavor, targetName), key => new Lazy<string>(() => CaptureTarget(key.Flavor, TargetCatalog.Get(key.Target))))
+            .GetOrAdd((flavor, targetName, gcType, dumpKind), key => new Lazy<string>(() => CaptureTarget(key.Flavor, TargetCatalog.Get(key.Target), key.GcType, key.DumpKind)))
             .Value;
 
         string dump = Path.Combine(dumpDir, stopName + ".dmp");
         if (!File.Exists(dump))
         {
             throw new InvalidOperationException(
-                $"Capture of {flavor}/{targetName} did not produce a dump for stop '{stopName}' at '{dump}'.");
+                $"Capture of {flavor}/{gcType}/{dumpKind}/{targetName} did not produce a dump for stop '{stopName}' at '{dump}'.");
         }
 
         return dump;
@@ -73,12 +73,13 @@ public static class SnapshotStore
     public static string TargetExe(Flavor flavor, string targetName) =>
         s_targetExe.GetOrAdd((flavor, targetName), k => new Lazy<string>(() => AcquireTarget(k.Flavor, TargetCatalog.Get(k.Target)))).Value;
 
-    private static string DumpDir(Flavor flavor, string target) =>
-        Path.Combine(RepoLayout.Scratch, "dumps", flavor.ToString().ToLowerInvariant(), target);
+    private static string DumpDir(Flavor flavor, string target, GcType gcType, DumpKind dumpKind) =>
+        Path.Combine(RepoLayout.Scratch, "dumps", flavor.ToString().ToLowerInvariant(),
+            gcType.ToString().ToLowerInvariant(), dumpKind.ToString().ToLowerInvariant(), target);
 
-    private static string CaptureTarget(Flavor flavor, TargetDefinition target)
+    private static string CaptureTarget(Flavor flavor, TargetDefinition target, GcType gcType, DumpKind dumpKind)
     {
-        string dumpDir = DumpDir(flavor, target.Name);
+        string dumpDir = DumpDir(flavor, target.Name, gcType, dumpKind);
         Directory.CreateDirectory(dumpDir);
 
         // Resolve (build if needed) the debuggee first, then reuse the cached dumps only if they were
@@ -96,31 +97,32 @@ public static class SnapshotStore
         if (flavor == Flavor.Framework)
         {
             // Desktop: no diagnostics IPC; dbgeng captures both snapshot (bpmd) and crash (second-chance).
-            // Run it out-of-process so a dbgeng crash dies with the child, not the test host.
-            CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir);
+            // Run it out-of-process so a dbgeng crash dies with the child, not the test host. Framework is
+            // constrained to DumpKind.Full (DbgEng full user-mode dump), so dumpKind isn't plumbed here.
+            CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir, gcType);
         }
         else if (isCrash && flavor == Flavor.SingleFile)
         {
             // Self-contained single-file doesn't ship/launch createdump, so capture its crash with
             // dbgeng like desktop (also out-of-process).
-            CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir);
+            CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir, gcType);
         }
         else if (isCrash)
         {
             // .NET Core crash: let the runtime's createdump write the dump.
-            CaptureCrashViaCreatedump(flavor, target, dumpDir);
+            CaptureCrashViaCreatedump(flavor, target, dumpDir, gcType, dumpKind);
         }
         else
         {
             // Snapshot stops on Core / SingleFile: self-snapshot mid-run via markers.
-            SelfCollectCapture(flavor, target, dumpDir);
+            SelfCollectCapture(flavor, target, dumpDir, gcType, dumpKind);
         }
 
         return dumpDir;
     }
 
     /// <summary>Run the Capturer child to produce dumps via in-process dbgeng (desktop, or single-file crash).</summary>
-    private static void CaptureWithDbgEng(string exePath, TargetDefinition target, string dumpDir)
+    private static void CaptureWithDbgEng(string exePath, TargetDefinition target, string dumpDir, GcType gcType)
     {
         ProcessStartInfo psi = new(RepoLayout.DotNetExe)
         {
@@ -138,7 +140,7 @@ public static class SnapshotStore
         // point at the Azure-authed symweb, which crashes SOS host init (loading Azure.Identity's closure).
         Directory.CreateDirectory(RepoLayout.SymbolCache);
         psi.Environment["_NT_SYMBOL_PATH"] = RepoLayout.SymbolCache;
-        ApplyGcMode(psi, target.GcMode);
+        ApplyGcType(psi, gcType);
 
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Capturer");
         string stdout = p.StandardOutput.ReadToEnd();
@@ -156,7 +158,7 @@ public static class SnapshotStore
     /// writes the full dump to the crash stop's path; the process exits non-zero (it crashed), so we
     /// verify the dump exists rather than the exit code.
     /// </summary>
-    private static void CaptureCrashViaCreatedump(Flavor flavor, TargetDefinition target, string dumpDir)
+    private static void CaptureCrashViaCreatedump(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind)
     {
         string exe = TargetExe(flavor, target.Name);
         StopPoint crash = target.StopPoints.Single(s => s.Kind == StopKind.Crash);
@@ -171,9 +173,10 @@ public static class SnapshotStore
             CreateNoWindow = true,
         };
         psi.Environment["DOTNET_DbgEnableMiniDump"] = "1";
-        psi.Environment["DOTNET_DbgMiniDumpType"] = "4"; // Full — required for SOS/ClrMD and single-file
+        psi.Environment["DOTNET_DbgMiniDumpType"] = CreatedumpType(dumpKind); // Full(4) — required for SOS/ClrMD; Mini(2) keeps the heap
         psi.Environment["DOTNET_DbgMiniDumpName"] = dumpPath;
         psi.Environment["DOTNET_CreateDumpDiagnostics"] = "1";
+        ApplyGcType(psi, gcType);
 
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to launch target");
         string stdout = p.StandardOutput.ReadToEnd();
@@ -190,9 +193,9 @@ public static class SnapshotStore
     /// <summary>Core/SingleFile snapshot capture: run the target once; its markers self-snapshot mid-run.</summary>
     /// <summary>Apply the GC-mode env vars to a debuggee launch. Server forces a deterministic multi-heap
     /// GC (a fixed heap count with DATAS off, so it can't collapse back to a single heap).</summary>
-    private static void ApplyGcMode(ProcessStartInfo psi, GcMode mode)
+    private static void ApplyGcType(ProcessStartInfo psi, GcType gcType)
     {
-        if (mode == GcMode.Server)
+        if (gcType == GcType.Server)
         {
             psi.Environment["DOTNET_gcServer"] = "1";
             psi.Environment["DOTNET_GCHeapCount"] = "4";
@@ -200,7 +203,13 @@ public static class SnapshotStore
         }
     }
 
-    private static void SelfCollectCapture(Flavor flavor, TargetDefinition target, string dumpDir)
+    /// <summary>The <c>createdump</c>/<c>DOTNET_DbgMiniDumpType</c> value for a dump kind: Full=4, Mini=2 (with heap).</summary>
+    private static string CreatedumpType(DumpKind dumpKind) => dumpKind == DumpKind.Mini ? "2" : "4";
+
+    /// <summary>The <c>dotnet-dump collect --type</c> value for a dump kind: Full, or Heap for Mini.</summary>
+    private static string CollectType(DumpKind dumpKind) => dumpKind == DumpKind.Mini ? "Heap" : "Full";
+
+    private static void SelfCollectCapture(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind)
     {
         string exe = TargetExe(flavor, target.Name);
         ProcessStartInfo psi = new(exe)
@@ -215,7 +224,8 @@ public static class SnapshotStore
         // Tell the debuggee's stop-point helper which dotnet-dump to self-collect with (the repo-built one).
         psi.Environment["SOSHARNESS_DOTNET"] = RepoLayout.DotNetExe;
         psi.Environment["SOSHARNESS_DOTNETDUMP_DLL"] = ToolPaths.DotNetDumpDll;
-        ApplyGcMode(psi, target.GcMode);
+        psi.Environment["SOSHARNESS_DUMP_TYPE"] = CollectType(dumpKind);
+        ApplyGcType(psi, gcType);
 
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to launch target");
         string stderr = p.StandardError.ReadToEnd();

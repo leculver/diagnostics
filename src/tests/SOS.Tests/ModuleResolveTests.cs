@@ -16,16 +16,16 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ModuleResolveTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task Name2EE_And_Token2EE_AgreeOnType(Host host, Flavor flavor, Liveness liveness)
+    public async Task Name2EE_And_Token2EE_AgreeOnType(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
-        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(flavor);
+        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(config.Flavor);
         DumpDomainResult domains = target.DumpDomain();
         AssemblyInfo assembly = domains.FindAssemblyByPathSuffix(moduleName)
             ?? throw new Xunit.Sdk.XunitException($"dumpdomain did not list the debuggee assembly '{moduleName}':\n{domains.Output.Text}");
@@ -51,12 +51,12 @@ public sealed class ModuleResolveTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task Name2EE_ResolvesMethodOnStack(Host host, Flavor flavor, Liveness liveness)
+    public async Task Name2EE_ResolvesMethodOnStack(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
-        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(flavor);
+        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(config.Flavor);
 
         // AtHeap() is the public method that raises the heap stop, so it is jitted and on the stack here.
         EEMatch method = target.Name2EE($"{moduleName}!SosHarnessScenarios.AtHeap").Single;

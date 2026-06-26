@@ -16,15 +16,15 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ClrUTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix(Flavor.AllValid, Host.Cdb);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrU_StructureLinesOffsets(Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrU_StructureLinesOffsets(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
-        EEMatch atHeap = Method(target, flavor, "AtHeap");
+        EEMatch atHeap = Method(target, config.Flavor, "AtHeap");
 
         // Default: banner, method name, Begin/size, a real instruction stream, and source annotations.
         ClrUResult plain = target.ClrU(atHeap.MethodDesc!.Value);
@@ -49,12 +49,12 @@ public sealed class ClrUTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrU_InterleavesGcInfoEhInfoIl(Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrU_InterleavesGcInfoEhInfoIl(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
-        EEMatch atHeap = Method(target, flavor, "AtHeap");
-        EEMatch lockHolder = Method(target, flavor, "LockHolder");
+        EEMatch atHeap = Method(target, config.Flavor, "AtHeap");
+        EEMatch lockHolder = Method(target, config.Flavor, "LockHolder");
 
         // -il interleaves the MSIL.
         Assert.Contains("IL_", target.ClrU(atHeap.MethodDesc!.Value, il: true).Output.Text, StringComparison.Ordinal);
@@ -74,11 +74,11 @@ public sealed class ClrUTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrU_AcceptsInstructionPointer(Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrU_AcceptsInstructionPointer(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
-        EEMatch atHeap = Method(target, flavor, "AtHeap");
+        EEMatch atHeap = Method(target, config.Flavor, "AtHeap");
 
         // clru disassembles the same method whether given its MethodDesc or an IP inside it.
         ClrUResult byMd = target.ClrU(atHeap.MethodDesc!.Value);

@@ -14,14 +14,14 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class GcWhereTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> StructureMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.AllValid, Liveness.Dump);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> StructureMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.AllValid, Liveness.Dump);
 
     [Theory]
     [MemberData(nameof(StructureMatrix))]
-    public async Task GcWhere_Structure(Host host, Flavor flavor, Liveness liveness)
+    public async Task GcWhere_Structure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint("gen0");
 
         ulong obj = FindObject(target);
@@ -43,10 +43,10 @@ public sealed class GcWhereTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task GcWhere_Moves(Host host, Flavor flavor, Liveness liveness)
+    public async Task GcWhere_Moves(TestConfig config)
     {
-        KnownIssues.SkipLiveGenPromotion(liveness);
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        KnownIssues.SkipLiveGenPromotion(config.Liveness);
+        using Target target = await Targets.GetTargetAsync(config);
 
         CheckGeneration(target, 0);
         CheckGeneration(target, 1);

@@ -16,15 +16,15 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ClrStackICorDebugTests
 {
-    public static TheoryData<string, Host, Flavor, Liveness> Matrix { get; }
-        = Targets.BuildMatrix([TargetCatalog.DivZero, TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> Matrix { get; }
+        = TestConfig.BuildMatrix([TargetCatalog.DivZero, TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrStack_ICorDebug(string targetName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_ICorDebug(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
-        if (targetName == TargetCatalog.Scenarios)
+        using Target target = await Targets.GetTargetAsync(config);
+        if (config.Target == TargetCatalog.Scenarios)
         {
             target.GoToStopPoint(TargetCatalog.StopArgsLocals);
         }
@@ -36,16 +36,16 @@ public sealed class ClrStackICorDebugTests
         // Basic -i: the expected managed methods are present as [DEFAULT] frames.
         IReadOnlyList<TargetExtensions.IcorFrame> frames = target.ClrstackICorDebug(variables: false);
         Assert.Contains(frames, f => f.IsManaged);
-        foreach (string method in ExpectedMethods(targetName, flavor))
+        foreach (string method in ExpectedMethods(config.Target, config.Flavor))
             Assert.Contains(frames, f => f.IsManaged && f.CallSite.Contains(method, StringComparison.Ordinal));
 
         // -i -a: same frames, now with parameters and locals decoded.
         IReadOnlyList<TargetExtensions.IcorFrame> withVars = target.ClrstackICorDebug(variables: true);
-        foreach (string method in ExpectedMethods(targetName, flavor))
+        foreach (string method in ExpectedMethods(config.Target, config.Flavor))
             Assert.Contains(withVars, f => f.IsManaged && f.CallSite.Contains(method, StringComparison.Ordinal));
 
-        if (targetName == TargetCatalog.Scenarios)
-            AssertArgsLocalsVariables(target, withVars, flavor);
+        if (config.Target == TargetCatalog.Scenarios)
+            AssertArgsLocalsVariables(target, withVars, config.Flavor);
     }
 
     private static void AssertArgsLocalsVariables(Target target, IReadOnlyList<TargetExtensions.IcorFrame> frames, Flavor flavor)

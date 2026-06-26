@@ -14,21 +14,21 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class LiveBpmdTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix(Flavor.AllValid, Host.AllValid, Liveness.Live);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.DivZero], Flavor.AllValid, Host.AllValid, Liveness.Live);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task RawBpmd_BreaksOnArbitraryMethod(Host host, Flavor flavor, Liveness liveness)
+    public async Task RawBpmd_BreaksOnArbitraryMethod(TestConfig config)
     {
-        Assert.Equal(Liveness.Live, liveness);
+        Assert.Equal(Liveness.Live, config.Liveness);
 
-        using LiveTarget target = (LiveTarget)await Targets.GetTargetAsync(TargetCatalog.DivZero, host, flavor, liveness);
+        using LiveTarget target = (LiveTarget)await Targets.GetTargetAsync(config);
 
         // Raw bpmd: set a breakpoint on an arbitrary method (one that is NOT a wired stop point), then
         // run to it. DivZero.C.F2 is reached early (Main -> F1 -> F2) and is not a marker method. The
         // managed module name is flavor-specific (desktop's is the EXE, .NET Core's the DLL) — ModuleFor
         // encapsulates that.
-        string module = TargetCatalog.Get(TargetCatalog.DivZero).ModuleFor(flavor);
+        string module = TargetCatalog.Get(TargetCatalog.DivZero).ModuleFor(config.Flavor);
         target.Sos($"bpmd {module} C.F2");
 
         target.RunToBreakpoint();

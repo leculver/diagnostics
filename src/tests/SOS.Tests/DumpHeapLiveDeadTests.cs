@@ -15,16 +15,16 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpHeapLiveDeadTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     private const string LiveType = "LiveUniqueMarker";
     private const string DeadType = "DeadUniqueMarker";
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpHeap_LiveAndDead(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpHeap_LiveAndDead(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         // Baseline: both objects are on the heap (the unfiltered walk sees live and dead alike).

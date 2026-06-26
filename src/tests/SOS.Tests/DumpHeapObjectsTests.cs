@@ -18,13 +18,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpHeapObjectsTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpHeap_ObjectsStatisticsAndSize(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpHeap_ObjectsStatisticsAndSize(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         // --- default: object listing + statistics + the "Total N objects, M bytes" footer ---

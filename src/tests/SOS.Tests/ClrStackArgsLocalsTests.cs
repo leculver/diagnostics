@@ -16,8 +16,8 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ClrStackArgsLocalsTests
 {
-    public static TheoryData<string, Host, Flavor, Liveness> Matrix { get; }
-        = Targets.BuildMatrix(
+    public static TheoryData<TestConfig> Matrix { get; }
+        = TestConfig.BuildMatrix(
             [
                 TargetCatalog.DivZero,
                 TargetCatalog.Scenarios,
@@ -25,10 +25,10 @@ public sealed class ClrStackArgsLocalsTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrStack_ArgsLocals(string targetName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_ArgsLocals(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
-        if (targetName == TargetCatalog.Scenarios)
+        using Target target = await Targets.GetTargetAsync(config);
+        if (config.Target == TargetCatalog.Scenarios)
         {
             target.GoToStopPoint(TargetCatalog.StopArgsLocals);
         }
@@ -65,7 +65,7 @@ public sealed class ClrStackArgsLocalsTests
         a.AssertContainsRow(f => Records(f, "PARAMETERS").Any(), "a frame has PARAMETERS");
         a.AssertContainsRow(f => Records(f, "LOCALS").Any(), "a frame has LOCALS");
 
-        switch (targetName)
+        switch (config.Target)
         {
             case TargetCatalog.DivZero:
                 // F3's locals are a=1, b=2 (ref-passed, so on the stack); F2's are p=3, q=4.
@@ -90,7 +90,7 @@ public sealed class ClrStackArgsLocalsTests
             default:
                 // A matrix target with no value assertions would otherwise silently pass on the
                 // structural checks alone; force adding a case when a target is added.
-                throw new ArgumentOutOfRangeException(nameof(targetName), targetName, "No clrstack args/locals value assertions defined for this target.");
+                throw new ArgumentOutOfRangeException(nameof(config.Target), config.Target, "No clrstack args/locals value assertions defined for this target.");
         }
     }
 

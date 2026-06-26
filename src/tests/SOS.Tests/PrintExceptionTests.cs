@@ -18,14 +18,14 @@ public sealed class PrintExceptionTests
     /// Hosts.DumpHosts = [cdb, dotnet-dump] || [lldb, dotnet-dump]
     /// Flavors = e.g. [Flavor.Core, Flavor.SingleFile, Flavor.Framework]
     /// </summary>
-    public static TheoryData<Host, Flavor, Liveness> Matrix { get; } = Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix { get; } = TestConfig.BuildMatrix([TargetCatalog.NestedException]);
 
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task PrintException_Structure(Host host, Flavor flavor, Liveness liveness)
+    public async Task PrintException_Structure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.NestedException, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         SosOutput pe = target.Sos("printexception");
@@ -44,9 +44,9 @@ public sealed class PrintExceptionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task PrintException_Data(Host host, Flavor flavor, Liveness liveness)
+    public async Task PrintException_Data(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.NestedException, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         SosOutput pe = target.Sos("printexception");

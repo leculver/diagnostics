@@ -15,8 +15,8 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ClrStackFrameCountTests
 {
-    public static TheoryData<string, Host, Flavor, Liveness> Matrix { get; }
-        = Targets.BuildMatrix(
+    public static TheoryData<TestConfig> Matrix { get; }
+        = TestConfig.BuildMatrix(
             [
                 TargetCatalog.DivZero,
                 TargetCatalog.NestedException,
@@ -26,9 +26,9 @@ public sealed class ClrStackFrameCountTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrStack_FrameCount(string targetName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_FrameCount(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         SosTable full = target.Clrstack();

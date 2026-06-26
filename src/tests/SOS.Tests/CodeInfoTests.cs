@@ -14,17 +14,17 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class CodeInfoTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task EhInfo_ReportsClauses(Host host, Flavor flavor, Liveness liveness)
+    public async Task EhInfo_ReportsClauses(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // A method with no try/catch has native code but no EH clauses.
-        EEMatch atHeap = Method(target, flavor, "AtHeap");
+        EEMatch atHeap = Method(target, config.Flavor, "AtHeap");
         EhInfoResult simple = target.EhInfo(atHeap.MethodDesc!.Value);
         Assert.Equal("SosHarnessScenarios.AtHeap()", simple.MethodName);
         Assert.Empty(simple.Clauses);
@@ -32,7 +32,7 @@ public sealed class CodeInfoTests
         // LockHolder's lock => try/finally, so ehinfo reports a FINALLY clause. (Desktop .NET Framework's
         // JIT additionally emits a "cloned finally" with an empty clause range, so assert on the real one
         // rather than an exact count.)
-        EEMatch lockHolder = Method(target, flavor, "LockHolder");
+        EEMatch lockHolder = Method(target, config.Flavor, "LockHolder");
         EhInfoResult eh = target.EhInfo(lockHolder.MethodDesc!.Value);
         Assert.Contains("LockHolder", eh.MethodName, StringComparison.Ordinal);
         Assert.NotEmpty(eh.Clauses);
@@ -48,11 +48,11 @@ public sealed class CodeInfoTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task GcInfo_ReportsEncoding(Host host, Flavor flavor, Liveness liveness)
+    public async Task GcInfo_ReportsEncoding(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
-        EEMatch atHeap = Method(target, flavor, "AtHeap");
+        EEMatch atHeap = Method(target, config.Flavor, "AtHeap");
 
         GcInfoResult gc = target.GcInfo(atHeap.MethodDesc!.Value);
         Assert.NotEqual(0ul, gc.EntryPoint);

@@ -17,13 +17,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpDomainTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpDomain_Structure(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpDomain_Structure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         DumpDomainResult domains = target.DumpDomain();
@@ -37,7 +37,7 @@ public sealed class DumpDomainTests
 
         // There is at least one application domain, and the debuggee's own assembly + module are loaded.
         Assert.NotEmpty(domains.AppDomains);
-        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(flavor);
+        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(config.Flavor);
         AssemblyInfo debuggee = domains.FindAssemblyByPathSuffix(moduleName)
             ?? throw new Xunit.Sdk.XunitException($"dumpdomain did not list the debuggee assembly '{moduleName}':\n{domains.Output.Text}");
         Assert.NotEqual(0ul, debuggee.Address);
@@ -46,7 +46,7 @@ public sealed class DumpDomainTests
         // Runtime-specific domain shape. Desktop .NET Framework has a Shared Domain (domain-neutral
         // assemblies such as mscorlib) and names its default domain after the exe; .NET Core (incl.
         // single-file) has neither.
-        if (flavor == Flavor.Framework)
+        if (config.Flavor == Flavor.Framework)
         {
             DomainInfo shared = domains.SharedDomain
                 ?? throw new Xunit.Sdk.XunitException($"desktop dumpdomain should have a Shared Domain:\n{domains.Output.Text}");
@@ -61,13 +61,13 @@ public sealed class DumpDomainTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpDomain_AssemblyRoundTrip(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpDomain_AssemblyRoundTrip(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         DumpDomainResult domains = target.DumpDomain();
-        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(flavor);
+        string moduleName = TargetCatalog.Get(TargetCatalog.Scenarios).ModuleFor(config.Flavor);
         AssemblyInfo debuggee = domains.FindAssemblyByPathSuffix(moduleName)
             ?? throw new Xunit.Sdk.XunitException($"dumpdomain did not list the debuggee assembly '{moduleName}':\n{domains.Output.Text}");
         DomainInfo owner = domains.Domains.Single(d => d.Assemblies.Any(a => a.Address == debuggee.Address));

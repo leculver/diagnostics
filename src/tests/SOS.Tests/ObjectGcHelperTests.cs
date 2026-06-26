@@ -14,15 +14,15 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ObjectGcHelperTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> CoreRuntimeMatrix => Targets.BuildMatrix(Flavor.Core | Flavor.SingleFile);
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> CoreRuntimeMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task DumpObjGcRefs_ListsReferences(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpObjGcRefs_ListsReferences(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // dumpobjgcrefs (the engine behind dumpobj -refs) is a managed extension command (dotnet-dump only).
@@ -35,9 +35,9 @@ public sealed class ObjectGcHelperTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ListNearObj_ShowsNeighbours(Host host, Flavor flavor, Liveness liveness)
+    public async Task ListNearObj_ShowsNeighbours(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         ulong marker = target.FindUniqueObject("FieldMarker");
@@ -48,9 +48,9 @@ public sealed class ObjectGcHelperTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task VerifyObj_AcceptsGoodObject(Host host, Flavor flavor, Liveness liveness)
+    public async Task VerifyObj_AcceptsGoodObject(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         target.Sos($"verifyobj {target.FindUniqueObject("FieldMarker"):x}").AssertContains("is a valid object");
@@ -58,9 +58,9 @@ public sealed class ObjectGcHelperTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task FindAppDomain_ResolvesObjectDomain(Host host, Flavor flavor, Liveness liveness)
+    public async Task FindAppDomain_ResolvesObjectDomain(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput domain = target.Sos($"findappdomain {target.FindUniqueObject("FieldMarker"):x}");
@@ -70,9 +70,9 @@ public sealed class ObjectGcHelperTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task PathTo_TracesReferencePath(Host host, Flavor flavor, Liveness liveness)
+    public async Task PathTo_TracesReferencePath(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         ulong marker = target.FindUniqueObject("FieldMarker");
@@ -86,9 +86,9 @@ public sealed class ObjectGcHelperTests
 
     [Theory]
     [MemberData(nameof(CoreRuntimeMatrix))]
-    public async Task DumpAlc_ResolvesDefaultLoadContext(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpAlc_ResolvesDefaultLoadContext(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // AssemblyLoadContext is a .NET Core concept; the debuggee loads into the default ALC.
@@ -97,9 +97,9 @@ public sealed class ObjectGcHelperTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task GcHandleLeaks_RunsHandleScan(Host host, Flavor flavor, Liveness liveness)
+    public async Task GcHandleLeaks_RunsHandleScan(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         target.Sos("gchandleleaks").AssertContains("GCHandle");

@@ -14,13 +14,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpDelegateTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpDelegate_ResolvesWorkerEntry(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpDelegate_ResolvesWorkerEntry(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // Find the ThreadStart delegate that targets WorkerEntry (workers are started with it).

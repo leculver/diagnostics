@@ -14,15 +14,15 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpIlTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpIl_DecodesKnownMethod(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpIl_DecodesKnownMethod(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
-        EEMatch atHeap = Method(target, flavor, "AtHeap");
+        EEMatch atHeap = Method(target, config.Flavor, "AtHeap");
 
         DumpIlResult il = target.DumpIl(atHeap.MethodDesc!.Value);
         Assert.NotEmpty(il.Instructions);
@@ -41,9 +41,9 @@ public sealed class DumpIlTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpIl_RejectsEmptyExpression(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpIl_RejectsEmptyExpression(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         target.Sos("dumpil 0").AssertContains("Must pass a valid expression");

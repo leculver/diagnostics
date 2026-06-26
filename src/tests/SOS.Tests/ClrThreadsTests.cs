@@ -21,14 +21,14 @@ public sealed class ClrThreadsTests
     /// Targets = debuggee targets to test
     /// Flavors = e.g. [Flavor.Core, Flavor.SingleFile, Flavor.Framework]
     /// </summary>
-    public static TheoryData<string, Host, Flavor, Liveness> Matrix { get; }
-                    = Targets.BuildMatrix([TargetCatalog.NestedException, TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> Matrix { get; }
+                    = TestConfig.BuildMatrix([TargetCatalog.NestedException, TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrThreads_ReportsThreadCount(string targetName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrThreads_ReportsThreadCount(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         SosOutput clrthreads = target.Sos("clrthreads");

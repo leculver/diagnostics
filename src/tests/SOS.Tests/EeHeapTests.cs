@@ -14,29 +14,29 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class EeHeapTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task EeHeap_Structure(Host host, Flavor flavor, Liveness liveness)
+    public async Task EeHeap_Structure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         EeHeap ee = target.EeHeap();
-        AssertWellFormed(ee, expectMultiHeap: false, expectPoh: flavor != Flavor.Framework);
+        AssertWellFormed(ee, expectMultiHeap: false, expectPoh: config.Flavor != Flavor.Framework);
     }
 
-    // Server GC produces a multi-heap GC; the scenarios-server target is captured under it. Core-only and
-    // dump-only (server-GC coverage flows through the Core dump path).
-    public static TheoryData<Host, Flavor, Liveness> ServerMatrix =>
-        Targets.BuildMatrix(Flavor.Core, Host.AllValid, Liveness.Dump);
+    // Server GC produces a multi-heap GC; capture the Scenarios target under the Server GC axis. Core-only
+    // and dump-only (server-GC coverage flows through the Core dump path; see TestConfig.IsValid).
+    public static TheoryData<TestConfig> ServerMatrix =>
+        TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core, Host.AllValid, Liveness.Dump, GcType.Server);
 
     [Theory]
     [MemberData(nameof(ServerMatrix))]
-    public async Task EeHeap_ServerGc_IsMultiHeap(Host host, Flavor flavor, Liveness liveness)
+    public async Task EeHeap_ServerGc_IsMultiHeap(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.ScenariosServer, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         EeHeap ee = target.EeHeap();

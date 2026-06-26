@@ -16,13 +16,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class GcInspectionTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task GcRoot_FindsRootsForLive_NoneForDead(Host host, Flavor flavor, Liveness liveness)
+    public async Task GcRoot_FindsRootsForLive_NoneForDead(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // The live marker is rooted by a static, so gcroot finds at least one root and names the object.
@@ -39,9 +39,9 @@ public sealed class GcInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ObjSize_CountsTransitiveClosure(Host host, Flavor flavor, Liveness liveness)
+    public async Task ObjSize_CountsTransitiveClosure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // The fieldless live marker keeps only itself alive.
@@ -58,9 +58,9 @@ public sealed class GcInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task GcHandles_ReportsHandleSummary(Host host, Flavor flavor, Liveness liveness)
+    public async Task GcHandles_ReportsHandleSummary(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput handles = target.Sos("gchandles -stat");
@@ -71,9 +71,9 @@ public sealed class GcInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task FinalizeQueue_ReportsStructure(Host host, Flavor flavor, Liveness liveness)
+    public async Task FinalizeQueue_ReportsStructure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput fq = target.Sos("finalizequeue -stat");
@@ -83,9 +83,9 @@ public sealed class GcInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task GcHeapStat_ReportsGenerationSizes(Host host, Flavor flavor, Liveness liveness)
+    public async Task GcHeapStat_ReportsGenerationSizes(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput stat = target.Sos("gcheapstat");
@@ -97,9 +97,9 @@ public sealed class GcInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task VerifyHeap_ReportsNoCorruption(Host host, Flavor flavor, Liveness liveness)
+    public async Task VerifyHeap_ReportsNoCorruption(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput verify = target.Sos("verifyheap");
@@ -109,9 +109,9 @@ public sealed class GcInspectionTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpGen_ListsGenerationObjects(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpGen_ListsGenerationObjects(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // dumpgen gen0 is the dedicated "objects in a generation" command; our thin-lock marker lives there.

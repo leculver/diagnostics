@@ -39,8 +39,8 @@ public sealed class ClrStackLinesTests
         _ => throw new ArgumentOutOfRangeException(nameof(target), target, "no expected frames"),
     };
 
-    public static TheoryData<string, Host, Flavor, Liveness> Matrix { get; }
-        = Targets.BuildMatrix(
+    public static TheoryData<TestConfig> Matrix { get; }
+        = TestConfig.BuildMatrix(
             [
                 TargetCatalog.SimpleThrow,
                 TargetCatalog.LineNums,
@@ -51,10 +51,10 @@ public sealed class ClrStackLinesTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task ClrStack_SourceLines(string targetName, Host host, Flavor flavor, Liveness liveness)
+    public async Task ClrStack_SourceLines(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(targetName, host, flavor, liveness);
-        if (targetName == TargetCatalog.Scenarios)
+        using Target target = await Targets.GetTargetAsync(config);
+        if (config.Target == TargetCatalog.Scenarios)
         {
             target.GoToStopPoint(TargetCatalog.StopArgsLocals);
         }
@@ -68,7 +68,7 @@ public sealed class ClrStackLinesTests
         // The expected managed methods appear, in caller order, each resolving to its source file with
         // a real (positive) line number.
         int searchFrom = 0;
-        foreach (Frame expected in ExpectedFrames(targetName))
+        foreach (Frame expected in ExpectedFrames(config.Target))
         {
             int at = IndexOfFrame(plain, expected.Function, searchFrom);
             Assert.True(at >= 0, $"Expected frame '{expected.Function}' at/after row {searchFrom} in:\n{Dump(plain)}");

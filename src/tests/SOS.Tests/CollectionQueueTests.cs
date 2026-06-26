@@ -13,13 +13,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class CollectionQueueTests
 {
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task Dcq_DumpsConcurrentQueueContents(Host host, Flavor flavor, Liveness liveness)
+    public async Task Dcq_DumpsConcurrentQueueContents(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         ulong queue = target.FirstObjectOfExactType("System.Collections.Concurrent.ConcurrentQueue<System.Int32>");
@@ -33,9 +33,9 @@ public sealed class CollectionQueueTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task ThreadPoolQueue_ShowsQueueStructure(Host host, Flavor flavor, Liveness liveness)
+    public async Task ThreadPoolQueue_ShowsQueueStructure(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         target.Sos("threadpoolqueue").AssertContains("work item queue");

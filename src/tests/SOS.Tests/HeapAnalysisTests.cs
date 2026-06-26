@@ -14,14 +14,14 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class HeapAnalysisTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task SizeStats_ReportsGenerationHistogram(Host host, Flavor flavor, Liveness liveness)
+    public async Task SizeStats_ReportsGenerationHistogram(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         target.Sos("sizestats").AssertContains("Size Statistics");
@@ -29,9 +29,9 @@ public sealed class HeapAnalysisTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task TraverseHeap_WritesProfilerFile(Host host, Flavor flavor, Liveness liveness)
+    public async Task TraverseHeap_WritesProfilerFile(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         string file = Path.Combine(Path.GetTempPath(), $"traverseheap-{Guid.NewGuid():N}.out");
@@ -49,9 +49,9 @@ public sealed class HeapAnalysisTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task EphemeralScans_Run(Host host, Flavor flavor, Liveness liveness)
+    public async Task EphemeralScans_Run(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // ephrefs/ephtoloh are managed extension commands (dotnet-dump only).

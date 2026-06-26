@@ -14,17 +14,6 @@ public enum StopKind
 }
 
 /// <summary>
-/// The GC flavor the debuggee runs under when captured/launched. Server GC produces a multi-heap GC
-/// (one heap per configured processor), which the eeheap parser and the generation/region tests
-/// exercise; Workstation is the single-heap default.
-/// </summary>
-public enum GcMode
-{
-    Workstation,
-    Server,
-}
-
-/// <summary>
 /// A named location in a target. The same definition drives both worlds: a dump for the
 /// snapshot/shared path, and a <c>bpmd</c> breakpoint on <see cref="Method"/> for the live path.
 /// </summary>
@@ -45,11 +34,7 @@ public sealed record StopPoint(string Name, StopKind Kind, string? Method);
 /// The flavors this target supports. Defaults to all; e.g. DynamicMethod uses a .NET-Core-only API
 /// (<c>DynamicMethod.CreateDelegate&lt;T&gt;</c>) so it can't build for desktop .NET Framework.
 /// </param>
-/// <param name="GcMode">
-/// The GC mode the debuggee is captured/launched under (Workstation default; Server forces a
-/// multi-heap GC via env vars at capture/launch time).
-/// </param>
-public sealed record TargetDefinition(string Name, string Project, IReadOnlyList<StopPoint> StopPoints, Flavor Flavors = Flavor.AllValid, GcMode GcMode = GcMode.Workstation)
+public sealed record TargetDefinition(string Name, string Project, IReadOnlyList<StopPoint> StopPoints, Flavor Flavors = Flavor.AllValid)
 {
     /// <summary>Managed module name for <c>bpmd</c> on .NET Core (e.g. "SosHarnessScenarios.dll").</summary>
     public string Module => Project + ".dll";
@@ -91,10 +76,6 @@ public static class TargetCatalog
     //     scenario is a named stop point on this single program (see SosHarnessScenarios). ---
 
     public const string Scenarios = "scenarios";
-
-    // The same marker debuggee captured under server GC (multi-heap), for the eeheap / generation-region
-    // tests that need more than one GC heap.
-    public const string ScenariosServer = "scenarios-server";
 
     // Stop-point names on the Scenarios debuggee (kept as constants so tests don't stringly-type them).
     public const string StopThinLock = "thinlock";
@@ -175,15 +156,6 @@ public static class TargetCatalog
             Scenarios,
             Project: ScenariosProject,
             StopPoints: s_scenarioStops),
-
-        // The same debuggee under server GC (multi-heap), for the eeheap / generation-region tests. Core
-        // only: server-GC coverage is exercised through the Core dump path.
-        new TargetDefinition(
-            ScenariosServer,
-            Project: ScenariosProject,
-            StopPoints: s_scenarioStops,
-            Flavors: Flavor.Core,
-            GcMode: GcMode.Server),
     }.ToDictionary(t => t.Name);
 
     public static TargetDefinition Get(string name) =>

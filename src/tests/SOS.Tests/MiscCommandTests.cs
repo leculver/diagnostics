@@ -14,13 +14,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class MiscCommandTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task SessionCommands_Execute(Host host, Flavor flavor, Liveness liveness)
+    public async Task SessionCommands_Execute(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // dbgout toggles internal debug logging and reports the new state.

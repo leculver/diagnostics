@@ -16,13 +16,13 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ObjectFieldsTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpObj_Fields_ReportKnownValues(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpObj_Fields_ReportKnownValues(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         DumpObjResult obj = target.DumpObj(target.FindUniqueObject("FieldMarker"));
@@ -47,9 +47,9 @@ public sealed class ObjectFieldsTests
 
     [Theory]
     [MemberData(nameof(Matrix))]
-    public async Task DumpVc_ReadsEmbeddedStructFields(Host host, Flavor flavor, Liveness liveness)
+    public async Task DumpVc_ReadsEmbeddedStructFields(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         DumpObjResult obj = target.DumpObj(target.FindUniqueObject("FieldMarker"));

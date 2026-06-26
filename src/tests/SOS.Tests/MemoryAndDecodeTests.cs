@@ -15,14 +15,15 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class MemoryAndDecodeTests
 {
-    public static TheoryData<Host, Flavor, Liveness> Matrix => Targets.BuildMatrix();
-    public static TheoryData<Host, Flavor, Liveness> DotnetDumpMatrix => Targets.BuildMatrix(Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> ScenariosMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> NestedExceptionMatrix => TestConfig.BuildMatrix([TargetCatalog.NestedException]);
+    public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task MemoryDumpers_ShowKnownFieldBytes(Host host, Flavor flavor, Liveness liveness)
+    public async Task MemoryDumpers_ShowKnownFieldBytes(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // The memory dumpers are dotnet-dump REPL commands (cdb uses the native d*/dp/db). FieldMarker's
@@ -36,10 +37,10 @@ public sealed class MemoryAndDecodeTests
     }
 
     [Theory]
-    [MemberData(nameof(Matrix))]
-    public async Task ThreadState_DecodesStateFlags(Host host, Flavor flavor, Liveness liveness)
+    [MemberData(nameof(ScenariosMatrix))]
+    public async Task ThreadState_DecodesStateFlags(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // Take a real thread-state value from clrthreads and decode it.
@@ -53,9 +54,9 @@ public sealed class MemoryAndDecodeTests
 
     [Theory]
     [MemberData(nameof(DotnetDumpMatrix))]
-    public async Task TaskState_DecodesTaskStatus(Host host, Flavor flavor, Liveness liveness)
+    public async Task TaskState_DecodesTaskStatus(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.Scenarios, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // taskstate is a managed extension command (dotnet-dump only). The async gate's Task<int> is awaited
@@ -65,11 +66,11 @@ public sealed class MemoryAndDecodeTests
     }
 
     [Theory]
-    [MemberData(nameof(Matrix))]
-    public async Task DumpExceptions_ListsManagedExceptions(Host host, Flavor flavor, Liveness liveness)
+    [MemberData(nameof(NestedExceptionMatrix))]
+    public async Task DumpExceptions_ListsManagedExceptions(TestConfig config)
     {
         // A crash target's dump has the thrown exception(s) on the heap.
-        using Target target = await Targets.GetTargetAsync(TargetCatalog.NestedException, host, flavor, liveness);
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
         SosOutput exceptions = target.Sos("dumpexceptions");
