@@ -13,6 +13,12 @@ namespace SOS.Tests;
 /// inlining an <see cref="Assert.SkipWhen"/> with a raw "see issues.md#…" string at the call site.
 /// xUnit's dynamic skip works through a thrown exception, so calling these from a test (or a test
 /// helper) registers the skip just as an inline <c>Assert.SkipWhen</c> would.
+///
+/// Host-structural <em>live</em> limitations that apply uniformly to every test exercising a (host,
+/// flavor) combination — with no per-test variation to express — are instead enforced once in the
+/// harness (see <c>LiveTarget</c>, which throws a dynamic skip for live <c>bpmd</c> on a single-file
+/// target under lldb; issues.md#bpmd-singlefile-live-lldb) rather than being repeated at dozens of call
+/// sites.
 /// </summary>
 internal static class KnownIssues
 {
@@ -34,4 +40,40 @@ internal static class KnownIssues
     public static void SkipLiveGenPromotion(Liveness liveness) =>
         Assert.SkipWhen(liveness == Liveness.Live,
             "live gen-promotion bpmd + GC.Collect(2) crashes the debuggee under dbgeng; see issues.md#gcwhere-live-gc");
+
+    /// <summary>
+    /// <c>clrma</c> drives the native CLRMA managed-analysis provider, which is only surfaced by the dbgeng
+    /// (cdb) and managed (dotnet-dump) hosts. The lldb SOS plugin does not expose it, so <c>sos clrma</c>
+    /// comes back as an unrecognized command. See issues.md#clrma-lldb.
+    /// </summary>
+    public static void SkipClrmaOnLldb(Host host) =>
+        Assert.SkipWhen(host == Host.Lldb,
+            "clrma is not surfaced by the lldb SOS plugin; see issues.md#clrma-lldb");
+
+    /// <summary>
+    /// <c>gchandleleaks</c> is a Windows-only SOS command (gated <c>#ifndef FEATURE_PAL</c>, registered only
+    /// by WindowsSOSCommand and absent from the Unix SOS exports), so it is unavailable on every non-Windows
+    /// host (lldb and dotnet-dump alike). See issues.md#gchandleleaks-windows-only.
+    /// </summary>
+    public static void SkipGcHandleLeaksOffWindows() =>
+        Assert.SkipWhen(!OperatingSystem.IsWindows(),
+            "gchandleleaks is a Windows-only SOS command; see issues.md#gchandleleaks-windows-only");
+
+    /// <summary>
+    /// <c>enummem</c> (the ICLRDataEnumMemoryRegions test command) is not surfaced by the lldb SOS plugin and
+    /// comes back as an unrecognized command there; it runs on the dbgeng and dotnet-dump hosts. See
+    /// issues.md#enummem-lldb.
+    /// </summary>
+    public static void SkipEnumMemOnLldb(Host host) =>
+        Assert.SkipWhen(host == Host.Lldb,
+            "enummem is not surfaced by the lldb SOS plugin; see issues.md#enummem-lldb");
+
+    /// <summary>
+    /// The <c>do</c> alias for <c>dumpobj</c> collides with lldb's built-in <c>do</c> command, so it can't be
+    /// dispatched through the lldb SOS host — <c>sos do</c> is reported as an unknown SOS command. The
+    /// primary <c>dumpobj</c> spelling works on lldb; only the alias is unavailable. See issues.md#do-alias-lldb.
+    /// </summary>
+    public static void SkipDoAliasOnLldb(Host host) =>
+        Assert.SkipWhen(host == Host.Lldb,
+            "the 'do' alias collides with lldb's built-in 'do' command; see issues.md#do-alias-lldb");
 }

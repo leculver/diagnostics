@@ -16,6 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The lldb command-framing helper imported by LldbCliHost at runtime (resolved next to the
+         assembly via RepoLayout/AppContext.BaseDirectory). Copied to the output directory. -->
+    <None Include="lldbhelper.py" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- In-process dbgeng COM wrappers (IDebugClient/Control/...). Already a repo dependency. -->
     <PackageReference Include="Microsoft.Diagnostics.Runtime.Utilities" Version="$(MicrosoftDiagnosticsRuntimeUtilitiesVersion)" />
     <!-- xUnit v3 core (library variant, no executable enforcement) so the harness can expose

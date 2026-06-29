@@ -49,7 +49,7 @@ public sealed class ClrStackLinesTests
                 TargetCatalog.Scenarios,
             ]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_SourceLines(TestConfig config)
     {

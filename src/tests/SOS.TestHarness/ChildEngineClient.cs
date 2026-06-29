@@ -17,7 +17,7 @@ namespace SOS.TestHarness;
 ///
 /// The child blocks on stdin between commands (no busy-wait), so idle clients are cheap.
 /// </summary>
-public sealed class ChildEngineClient : IDebuggerHost
+public sealed class ChildEngineClient : ILiveDebuggerHost
 {
     private readonly Process _process;
     private readonly StreamWriter _stdin;

@@ -68,7 +68,7 @@ public sealed class NativeAddressSpaceTests
         result.AssertContains("Stack Regions");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task NotReachableInRange_ScansPointerRange(TestConfig config)
     {

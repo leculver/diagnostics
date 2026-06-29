@@ -13,15 +13,16 @@ internal static class HostFactory
         // cdb runs dbgeng in a CHILD process (EngineHost), so the test host never loads dbgeng.
         Host.Cdb => ChildEngineClient.ForDump(host.ToString().ToLowerInvariant(), dumpPath, DacDirFor(flavor), publicSymbols),
         Host.DotnetDump => new DotNetDumpHost(dumpPath),
-        Host.Lldb => throw new NotSupportedException("lldb host is not implemented in this PoC."),
+        Host.Lldb => new LldbCliHost(dumpPath, flavor),
         _ => throw new ArgumentException($"Unknown host '{host}'."),
     };
 
-    /// <summary>A live host (exclusive, advancing) — also a child EngineHost process.</summary>
-    public static ChildEngineClient CreateLiveHost(Host host, Flavor flavor, string exePath) => host switch
+    /// <summary>A live host (exclusive, advancing). On Windows this is the in-process dbgeng engine driven
+    /// through a child EngineHost process; on Linux/macOS it drives the lldb CLI directly.</summary>
+    public static ILiveDebuggerHost CreateLiveHost(Host host, Flavor flavor, string exePath) => host switch
     {
         Host.Cdb => ChildEngineClient.ForLive(host.ToString().ToLowerInvariant(), exePath, DacDirFor(flavor)),
-        Host.Lldb => throw new NotSupportedException("lldb live host is not implemented in this PoC."),
+        Host.Lldb => new LldbLiveHost(exePath, flavor),
         Host.DotnetDump => throw new ArgumentException("dotnet-dump is post-mortem only; it has no live host."),
         _ => throw new ArgumentException($"Unknown live host '{host}'."),
     };

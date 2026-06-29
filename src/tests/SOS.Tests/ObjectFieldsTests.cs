@@ -18,7 +18,7 @@ public sealed class ObjectFieldsTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpObj_Fields_ReportKnownValues(TestConfig config)
     {
@@ -45,7 +45,7 @@ public sealed class ObjectFieldsTests
         Assert.NotEqual(0ul, ObjectCommandParsing.Hex(textField.Value)); // its value is the string's address
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpVc_ReadsEmbeddedStructFields(TestConfig config)
     {

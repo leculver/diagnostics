@@ -16,7 +16,7 @@ public sealed class LiveBpmdTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.DivZero], Flavor.AllValid, Host.AllValid, Liveness.Live);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task RawBpmd_BreaksOnArbitraryMethod(TestConfig config)
     {

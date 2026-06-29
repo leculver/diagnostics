@@ -101,10 +101,11 @@ public static class SnapshotStore
             // constrained to DumpKind.Full (DbgEng full user-mode dump), so dumpKind isn't plumbed here.
             CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir, gcType);
         }
-        else if (isCrash && flavor == Flavor.SingleFile)
+        else if (isCrash && flavor == Flavor.SingleFile && OperatingSystem.IsWindows())
         {
-            // Self-contained single-file doesn't ship/launch createdump, so capture its crash with
-            // dbgeng like desktop (also out-of-process).
+            // Self-contained single-file on Windows doesn't ship/launch createdump, so capture its crash
+            // with dbgeng like desktop (also out-of-process). On Linux/macOS the bundled runtime's
+            // createdump handles single-file crashes, so we fall through to CaptureCrashViaCreatedump.
             CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir, gcType);
         }
         else if (isCrash)
@@ -176,6 +177,7 @@ public static class SnapshotStore
         psi.Environment["DOTNET_DbgMiniDumpType"] = CreatedumpType(dumpKind); // Full(4) — required for SOS/ClrMD; Mini(2) keeps the heap
         psi.Environment["DOTNET_DbgMiniDumpName"] = dumpPath;
         psi.Environment["DOTNET_CreateDumpDiagnostics"] = "1";
+        ApplyMacOsDumpConfig(psi);
         ApplyGcType(psi, gcType);
 
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to launch target");
@@ -191,6 +193,25 @@ public static class SnapshotStore
     }
 
     /// <summary>Core/SingleFile snapshot capture: run the target once; its markers self-snapshot mid-run.</summary>
+    /// <summary>
+    /// macOS-only dump configuration applied to every debuggee we capture a dump from (createdump on crash,
+    /// or the in-process <c>dotnet-dump collect</c> self-snapshot). createdump on macOS defaults to a Mach-O
+    /// core, which SOS/ClrMD cannot read; <c>DOTNET_DbgEnableElfDumpOnMacOS=1</c> makes it emit an ELF core
+    /// instead (matching the legacy harness). The diagnostic-IPC socket the runtime opens lives under
+    /// <c>$TMPDIR</c>, and macOS's default <c>$TMPDIR</c> (<c>/var/folders/…</c>) routinely blows past the
+    /// 104-byte Unix-domain-socket path limit, so point the debuggee at a short <c>TMPDIR</c>. No-op off macOS.
+    /// </summary>
+    private static void ApplyMacOsDumpConfig(ProcessStartInfo psi)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        psi.Environment["DOTNET_DbgEnableElfDumpOnMacOS"] = "1";
+        psi.Environment["TMPDIR"] = "/tmp";
+    }
+
     /// <summary>Apply the GC-mode env vars to a debuggee launch. Server forces a deterministic multi-heap
     /// GC (a fixed heap count with DATAS off, so it can't collapse back to a single heap).</summary>
     private static void ApplyGcType(ProcessStartInfo psi, GcType gcType)
@@ -225,6 +246,7 @@ public static class SnapshotStore
         psi.Environment["SOSHARNESS_DOTNET"] = RepoLayout.DotNetExe;
         psi.Environment["SOSHARNESS_DOTNETDUMP_DLL"] = ToolPaths.DotNetDumpDll;
         psi.Environment["SOSHARNESS_DUMP_TYPE"] = CollectType(dumpKind);
+        ApplyMacOsDumpConfig(psi);
         ApplyGcType(psi, gcType);
 
         using Process p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to launch target");
@@ -253,7 +275,7 @@ public static class SnapshotStore
     /// absent or older than the debuggee source (so a local debuggee edit is picked up).</summary>
     private static string AcquireCore(TargetDefinition target)
     {
-        string exe = Path.Combine(RepoLayout.CoreDebuggeeDir(target.Project), target.Project + ".exe");
+        string exe = Path.Combine(RepoLayout.CoreDebuggeeDir(target.Project), target.Project + RepoLayout.ExeSuffix);
         string project = RepoLayout.DebuggeeProject(target.Project);
         if (IsUpToDate(exe, NewestSourceWriteTime(project)))
         {
@@ -285,7 +307,7 @@ public static class SnapshotStore
     {
         string project = RepoLayout.DebuggeeProject(target.Project);
         string outDir = Path.Combine(RepoLayout.Scratch, "targets", flavor.ToString().ToLowerInvariant(), target.Name);
-        string exe = Path.Combine(outDir, target.Project + ".exe");
+        string exe = Path.Combine(outDir, target.Project + RepoLayout.ExeSuffix);
 
         if (IsUpToDate(exe, NewestSourceWriteTime(project)))
         {

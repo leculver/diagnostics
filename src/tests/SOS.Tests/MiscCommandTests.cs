@@ -16,7 +16,7 @@ public sealed class MiscCommandTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task SessionCommands_Execute(TestConfig config)
     {
@@ -28,6 +28,8 @@ public sealed class MiscCommandTests
 
         // sosflush and enummem produce no output but must be recognised commands that run cleanly.
         AssertRuns(target.Sos("sosflush"));
+
+        KnownIssues.SkipEnumMemOnLldb(config.Host);
         AssertRuns(target.Sos("enummem"));
     }
 

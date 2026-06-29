@@ -18,7 +18,7 @@ public sealed class ModuleResolveTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task Name2EE_And_Token2EE_AgreeOnType(TestConfig config)
     {
@@ -49,7 +49,7 @@ public sealed class ModuleResolveTests
         Assert.Equal("ThinLockMarker", named.Name);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task Name2EE_ResolvesMethodOnStack(TestConfig config)
     {

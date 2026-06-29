@@ -22,25 +22,62 @@ public static class ToolPaths
     /// Directory containing <c>dbgeng.dll</c> (+ dbghelp/dbgcore/dbgmodel/symsrv and the <c>winext</c>
     /// gallery), taken from the restored <c>Microsoft.Debugging.DbgEng.Core</c> package at
     /// <c>&lt;pkgRoot&gt;/microsoft.debugging.dbgeng.core/&lt;ver&gt;/tools/&lt;arch&gt;</c> (falling back to
-    /// the cdb-sos package's <c>runtimes/win-&lt;arch&gt;/native</c>).
+    /// the cdb-sos package's <c>runtimes/win-&lt;arch&gt;/native</c>). Windows-only; resolved lazily so the
+    /// non-Windows lldb/dotnet-dump hosts never trigger it.
     /// </summary>
-    public static string DbgEngDirectory { get; } = ResolveDbgEngDirectory();
+    public static string DbgEngDirectory => s_dbgEngDirectory.Value;
 
-    /// <summary>Repo-built native SOS (<c>sos.dll</c>) from <see cref="RepoLayout.ArtifactsBinNative"/>.</summary>
-    public static string SosPath { get; } = ResolveSosPath();
+    /// <summary>Repo-built native SOS (<c>sos.dll</c>) from <see cref="RepoLayout.ArtifactsBinNative"/>.
+    /// Windows-only (the dbgeng <c>.load</c> target); resolved lazily.</summary>
+    public static string SosPath => s_sosPath.Value;
 
     /// <summary>Repo-built <c>dotnet-dump</c> managed entry point, run as <c>dotnet &lt;dll&gt;</c>.</summary>
-    public static string DotNetDumpDll { get; } = ResolveDotNetDumpDll();
+    public static string DotNetDumpDll => s_dotNetDumpDll.Value;
 
     /// <summary>
-    /// Directory containing the <c>mscordaccore.dll</c> (DAC) that matches the runtime a self-contained
-    /// single-file debuggee bundles. Self-contained single-file apps carry the runtime inside the exe,
-    /// so dbgeng can't find the DAC next to a runtime on disk and (hermetically) can't download it; we
-    /// load it explicitly via <c>.cordll -lp</c>. The version is the repo's pinned net10 runtime
+    /// The native lldb plugin (<c>libsosplugin.so</c> on Linux, <c>libsosplugin.dylib</c> on macOS) that
+    /// SOS loads into lldb via <c>plugin load</c>, taken from <see cref="RepoLayout.ArtifactsBinNative"/>.
+    /// Non-Windows; resolved lazily.
+    /// </summary>
+    public static string LldbPluginPath => s_lldbPluginPath.Value;
+
+    /// <summary>
+    /// The <c>lldb</c> executable the harness drives. Resolution mirrors <c>eng/build.sh</c>: the
+    /// <c>LLDB_PATH</c> env var first, then (on macOS) Xcode's lldb at
+    /// <c>$(xcode-select -p)/usr/bin/lldb</c> (it carries the debugging entitlements), then a plain
+    /// <c>lldb</c> on <c>PATH</c>. Non-Windows; resolved lazily.
+    /// </summary>
+    public static string LldbExe => s_lldbExe.Value;
+
+    /// <summary>
+    /// The .NET runtime directory SOS hosts its managed extension on (the <c>sethostruntime</c> target).
+    /// Points at the repo's locally-acquired <c>.dotnet</c> shared runtime (highest net10 present), so the
+    /// host runtime is deterministic and hermetic rather than auto-detected from <c>PATH</c>.
+    /// </summary>
+    public static string HostRuntimeDirectory => s_hostRuntimeDirectory.Value;
+
+    /// <summary>
+    /// Directory containing the DAC (<c>mscordaccore.dll</c> / <c>libmscordaccore.so</c> /
+    /// <c>libmscordaccore.dylib</c>) that matches the runtime a self-contained single-file debuggee
+    /// bundles. Self-contained single-file apps carry the runtime inside the exe, so a native debugger
+    /// can't find the DAC next to a runtime on disk and (hermetically) can't download it. The cdb host
+    /// loads it explicitly via <c>.cordll -lp</c>; the lldb host adds it as a local symbol-store
+    /// directory via <c>setsymbolserver -directory</c>. The version is the repo's pinned net10 runtime
     /// (<c>MicrosoftNETCoreApp100Version</c>), which the publish resolves against, and the DAC ships in
     /// that runtime pack. Returns <c>null</c> if it can't be located.
     /// </summary>
-    public static string? SingleFileDacDirectory { get; } = ResolveSingleFileDacDirectory();
+    public static string? SingleFileDacDirectory => s_singleFileDacDirectory.Value;
+
+    // Lazy so each host only resolves the tools it actually needs: the non-Windows lldb/dotnet-dump hosts
+    // never touch the Windows-only dbgeng/sos.dll resolvers (which would throw for lack of those payloads),
+    // and the Windows cdb host never touches the lldb resolvers.
+    private static readonly Lazy<string> s_dbgEngDirectory = new(ResolveDbgEngDirectory);
+    private static readonly Lazy<string> s_sosPath = new(ResolveSosPath);
+    private static readonly Lazy<string> s_dotNetDumpDll = new(ResolveDotNetDumpDll);
+    private static readonly Lazy<string> s_lldbPluginPath = new(ResolveLldbPluginPath);
+    private static readonly Lazy<string> s_lldbExe = new(ResolveLldbExe);
+    private static readonly Lazy<string> s_hostRuntimeDirectory = new(ResolveHostRuntimeDirectory);
+    private static readonly Lazy<string?> s_singleFileDacDirectory = new(ResolveSingleFileDacDirectory);
 
     private static string ResolveDbgEngDirectory()
     {
@@ -121,6 +158,128 @@ public static class ToolPaths
         return path;
     }
 
+    private static string ResolveLldbPluginPath()
+    {
+        string name = OperatingSystem.IsMacOS() ? "libsosplugin.dylib" : "libsosplugin.so";
+        string path = Path.Combine(RepoLayout.ArtifactsBinNative, name);
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException(
+                $"Repo-built lldb SOS plugin not found at '{path}'. Build the repo (./build.sh) so the native " +
+                "lldb plugin is produced for this configuration/architecture.", path);
+        }
+
+        return path;
+    }
+
+    private static string ResolveLldbExe()
+    {
+        // 1) Explicit override (what eng/build.sh exports), if it points at a real file.
+        string? env = Environment.GetEnvironmentVariable("LLDB_PATH");
+        if (!string.IsNullOrEmpty(env) && File.Exists(env))
+        {
+            return env;
+        }
+
+        // 2) macOS: Xcode's lldb is signed with the debugging entitlements needed to drive a process and
+        //    to load core dumps, so prefer it over anything else.
+        if (OperatingSystem.IsMacOS())
+        {
+            string? developerDir = TryRun("xcode-select", "-p");
+            if (!string.IsNullOrWhiteSpace(developerDir))
+            {
+                string candidate = Path.Combine(developerDir.Trim(), "usr", "bin", "lldb");
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        // 3) A plain `lldb` on PATH.
+        string? onPath = FindOnPath("lldb");
+        if (onPath is not null)
+        {
+            return onPath;
+        }
+
+        throw new FileNotFoundException(
+            "Could not locate an 'lldb' executable. Set LLDB_PATH, install lldb on PATH, or (on macOS) " +
+            "install Xcode.");
+    }
+
+    private static string ResolveHostRuntimeDirectory()
+    {
+        // SOS hosts its managed extension on a .NET runtime; point it at the repo's locally-acquired
+        // .dotnet shared runtime so it's deterministic. Any recent runtime works as a host (it need not
+        // match the target's runtime), so pick the highest net10 present.
+        string sharedRoot = Path.Combine(RepoLayout.Root, ".dotnet", "shared", "Microsoft.NETCore.App");
+        if (Directory.Exists(sharedRoot))
+        {
+            string? best = Directory.GetDirectories(sharedRoot)
+                .Select(Path.GetFileName)
+                .Where(v => v is not null && v.StartsWith("10.0.", StringComparison.Ordinal))
+                .OrderByDescending(v => v, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            if (best is not null)
+            {
+                return Path.Combine(sharedRoot, best);
+            }
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Could not locate a net10 host runtime under '{sharedRoot}'. Run ./build.sh so the repo's " +
+            ".dotnet runtime is acquired.");
+    }
+
+    private static string? FindOnPath(string fileName)
+    {
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        foreach (string dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string candidate = Path.Combine(dir, fileName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryRun(string fileName, string arguments)
+    {
+        try
+        {
+            using System.Diagnostics.Process? p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            if (p is null)
+            {
+                return null;
+            }
+
+            string output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            return p.ExitCode == 0 ? output : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string ResolveDotNetDumpDll()
     {
         // dotnet-dump targets net8.0 and is published under the repo artifacts; prefer the published
@@ -145,9 +304,10 @@ public static class ToolPaths
 
     private static string? ResolveSingleFileDacDirectory()
     {
-        string rid = RepoLayout.Rid; // win-x64 / win-arm64 / ...
+        string rid = RepoLayout.Rid; // win-x64 / linux-x64 / osx-arm64 / ...
         string packId = $"microsoft.netcore.app.runtime.{rid}";
         string relativeNative = Path.Combine("runtimes", rid, "native");
+        string dacFileName = DacFileName; // mscordaccore.dll / libmscordaccore.so / libmscordaccore.dylib
 
         // Preferred: the repo's pinned net10 runtime version (what the self-contained single-file
         // publish resolves against), read straight from eng/Versions.props.
@@ -157,7 +317,7 @@ public static class ToolPaths
             foreach (string root in NuGetPackageRoots())
             {
                 string native = Path.Combine(root, packId, pinned!, relativeNative);
-                if (File.Exists(Path.Combine(native, "mscordaccore.dll")))
+                if (File.Exists(Path.Combine(native, dacFileName)))
                 {
                     return native;
                 }
@@ -181,7 +341,7 @@ public static class ToolPaths
             if (best is not null)
             {
                 string native = Path.Combine(pkg, best, relativeNative);
-                if (File.Exists(Path.Combine(native, "mscordaccore.dll")))
+                if (File.Exists(Path.Combine(native, dacFileName)))
                 {
                     return native;
                 }
@@ -190,6 +350,12 @@ public static class ToolPaths
 
         return null;
     }
+
+    /// <summary>The platform-specific DAC module file name: <c>mscordaccore.dll</c> on Windows,
+    /// <c>libmscordaccore.dylib</c> on macOS, <c>libmscordaccore.so</c> elsewhere.</summary>
+    private static string DacFileName =>
+        OperatingSystem.IsWindows() ? "mscordaccore.dll" :
+        OperatingSystem.IsMacOS() ? "libmscordaccore.dylib" : "libmscordaccore.so";
 
     private static string? ReadVersionsProp(string name)
     {

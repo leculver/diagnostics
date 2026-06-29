@@ -15,7 +15,7 @@ public sealed class CollectionQueueTests
 {
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task Dcq_DumpsConcurrentQueueContents(TestConfig config)
     {
@@ -31,7 +31,7 @@ public sealed class CollectionQueueTests
         dcq.AssertContains("819");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task ThreadPoolQueue_ShowsQueueStructure(TestConfig config)
     {

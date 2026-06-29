@@ -19,7 +19,7 @@ public sealed class DumpHeapGenerationsTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpHeap_GenerationsAndRegions(TestConfig config)
     {

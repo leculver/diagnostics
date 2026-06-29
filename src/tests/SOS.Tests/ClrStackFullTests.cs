@@ -25,7 +25,7 @@ public sealed class ClrStackFullTests
                 TargetCatalog.NestedException,
             ]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_Full(TestConfig config)
     {
@@ -57,10 +57,18 @@ public sealed class ClrStackFullTests
         bool nativeHost = config.Host == Host.Cdb || config.Host == Host.Lldb;
         if (nativeHost)
         {
-            // Native interleaving: strictly more frames than plain, with real native runtime frames.
+            // Native interleaving: strictly more frames than plain (native frames are woven in).
             Assert.True(full.Count > plain.Length,
                 $"-f ({full.Count}) should have more frames than plain clrstack ({plain.Length}) under a native host.");
-            Assert.Contains(full, f => f.IsNativeRuntime);
+
+            // Real native runtime frames (coreclr!/clr!/ntdll!/…) are only identifiable when the runtime
+            // is its own module. In a self-contained single-file publish the runtime is statically linked
+            // into the app executable, so those frames render under the app module name (e.g.
+            // SimpleThrow!…) and can't be matched by module name. See issues.md#clrstack-f-singlefile-runtime-frames.
+            if (config.Flavor != Flavor.SingleFile)
+            {
+                Assert.Contains(full, f => f.IsNativeRuntime);
+            }
         }
         else
         {

@@ -20,7 +20,7 @@ public sealed class SpecializedInspectionTests
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
     public static TheoryData<TestConfig> CoreRuntimeMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task TimerInfo_ReportsRegisteredTimer(TestConfig config)
     {
@@ -32,7 +32,7 @@ public sealed class SpecializedInspectionTests
         Assert.Matches(@"[1-9]\d* timers", target.Sos("timerinfo").Text);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task ThreadPool_ReportsWorkerStats(TestConfig config)
     {
@@ -45,7 +45,7 @@ public sealed class SpecializedInspectionTests
         pool.AssertContains("Workers Total");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task SyncBlk_ReportsInflatedMonitor(TestConfig config)
     {
@@ -60,7 +60,7 @@ public sealed class SpecializedInspectionTests
             $"expected a held sync block:\n{sync.Text}");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(CoreRuntimeMatrix))]
     public async Task DumpAsync_ShowsSuspendedStateMachine(TestConfig config)
     {
@@ -72,7 +72,7 @@ public sealed class SpecializedInspectionTests
         target.Sos("dumpasync").AssertContains("SuspendedAsync");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task Dcd_DumpsConcurrentDictionary(TestConfig config)
     {

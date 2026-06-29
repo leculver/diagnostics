@@ -18,7 +18,7 @@ public sealed class ObjectGcHelperTests
     public static TheoryData<TestConfig> CoreRuntimeMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task DumpObjGcRefs_ListsReferences(TestConfig config)
     {
@@ -33,7 +33,7 @@ public sealed class ObjectGcHelperTests
         refs.AssertContains("System.Int32[]");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task ListNearObj_ShowsNeighbours(TestConfig config)
     {
@@ -46,7 +46,7 @@ public sealed class ObjectGcHelperTests
         Assert.Contains("FieldMarker", near.Text, StringComparison.Ordinal);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task VerifyObj_AcceptsGoodObject(TestConfig config)
     {
@@ -56,7 +56,7 @@ public sealed class ObjectGcHelperTests
         target.Sos($"verifyobj {target.FindUniqueObject("FieldMarker"):x}").AssertContains("is a valid object");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task FindAppDomain_ResolvesObjectDomain(TestConfig config)
     {
@@ -68,7 +68,7 @@ public sealed class ObjectGcHelperTests
         domain.AssertContains("Name:");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task PathTo_TracesReferencePath(TestConfig config)
     {
@@ -84,7 +84,7 @@ public sealed class ObjectGcHelperTests
         Assert.Contains("System.String", path.Text, StringComparison.Ordinal);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(CoreRuntimeMatrix))]
     public async Task DumpAlc_ResolvesDefaultLoadContext(TestConfig config)
     {
@@ -95,12 +95,14 @@ public sealed class ObjectGcHelperTests
         target.Sos($"dumpalc {target.FindUniqueObject("FieldMarker"):x}").AssertContains("DefaultAssemblyLoadContext");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task GcHandleLeaks_RunsHandleScan(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
+
+        KnownIssues.SkipGcHandleLeaksOffWindows();
 
         target.Sos("gchandleleaks").AssertContains("GCHandle");
     }

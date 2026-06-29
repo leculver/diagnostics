@@ -17,7 +17,7 @@ public sealed class HeapAnalysisTests
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task SizeStats_ReportsGenerationHistogram(TestConfig config)
     {
@@ -27,7 +27,7 @@ public sealed class HeapAnalysisTests
         target.Sos("sizestats").AssertContains("Size Statistics");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task TraverseHeap_WritesProfilerFile(TestConfig config)
     {
@@ -47,7 +47,7 @@ public sealed class HeapAnalysisTests
         }
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task EphemeralScans_Run(TestConfig config)
     {

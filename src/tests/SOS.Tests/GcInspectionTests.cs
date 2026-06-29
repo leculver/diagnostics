@@ -18,7 +18,7 @@ public sealed class GcInspectionTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task GcRoot_FindsRootsForLive_NoneForDead(TestConfig config)
     {
@@ -37,7 +37,7 @@ public sealed class GcInspectionTests
         Assert.Equal(0, UniqueRootCount(deadRoots));
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task ObjSize_CountsTransitiveClosure(TestConfig config)
     {
@@ -56,7 +56,7 @@ public sealed class GcInspectionTests
         Assert.True(fieldBytes > 0);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task GcHandles_ReportsHandleSummary(TestConfig config)
     {
@@ -69,7 +69,7 @@ public sealed class GcInspectionTests
         Assert.True(strong.Success && int.Parse(strong.Groups[1].Value) > 0, $"expected strong handles:\n{handles.Text}");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task FinalizeQueue_ReportsStructure(TestConfig config)
     {
@@ -81,7 +81,7 @@ public sealed class GcInspectionTests
         Assert.Matches(@"generation 0 has \d+ objects", fq.Text);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task GcHeapStat_ReportsGenerationSizes(TestConfig config)
     {
@@ -95,7 +95,7 @@ public sealed class GcInspectionTests
         Assert.True(long.Parse(heap0.Groups[1].Value) > 0, "gen0 allocated size should be positive");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task VerifyHeap_ReportsNoCorruption(TestConfig config)
     {
@@ -107,7 +107,7 @@ public sealed class GcInspectionTests
         verify.AssertContains("No heap corruption detected");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpGen_ListsGenerationObjects(TestConfig config)
     {

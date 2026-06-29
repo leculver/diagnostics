@@ -16,7 +16,7 @@ public sealed class DumpIlTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpIl_DecodesKnownMethod(TestConfig config)
     {
@@ -39,7 +39,7 @@ public sealed class DumpIlTests
         Assert.Equal(new[] { "ldstr", "call", "nop", "ret" }, byPointer.Instructions.Select(i => i.OpCode));
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpIl_RejectsEmptyExpression(TestConfig config)
     {

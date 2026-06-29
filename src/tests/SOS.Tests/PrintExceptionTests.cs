@@ -21,7 +21,7 @@ public sealed class PrintExceptionTests
     public static TheoryData<TestConfig> Matrix { get; } = TestConfig.BuildMatrix([TargetCatalog.NestedException]);
 
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task PrintException_Structure(TestConfig config)
     {
@@ -42,7 +42,7 @@ public sealed class PrintExceptionTests
         pe.AssertContains("There are nested exceptions on this thread");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task PrintException_Data(TestConfig config)
     {

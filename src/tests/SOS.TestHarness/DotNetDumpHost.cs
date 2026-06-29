@@ -63,6 +63,16 @@ public sealed class DotNetDumpHost : IDebuggerHost
     public void LoadSos()
     {
         // SOS is built into dotnet-dump's analyze host; nothing to load.
+
+        // Local-dev escape hatch (off by default; never set in CI). On a machine with mismatched private
+        // runtime builds the bundled cDAC may not match the dump's coreclr and the managed
+        // ExtensionCommands surface that as "No CLR runtime found". Setting SOSHARNESS_USECDAC=false forces
+        // the in-box legacy DAC so the harness can be validated end to end on such a machine. This only
+        // changes which DAC SOS loads, not any harness behavior. (Mirrors the LldbCliHost knob.)
+        if (Environment.GetEnvironmentVariable("SOSHARNESS_USECDAC") is { Length: > 0 } useCDac)
+        {
+            Run($"runtimes --usecdac {useCDac}");
+        }
     }
 
     public SosOutput Execute(string command) => new(Name, command, Run(command));

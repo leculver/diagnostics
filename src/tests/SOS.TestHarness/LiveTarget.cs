@@ -22,7 +22,7 @@ public sealed class LiveTarget : Target
     private const string CrashMarker = "\0crash";
 
     private readonly TargetDefinition _definition;
-    private ChildEngineClient? _host;
+    private ILiveDebuggerHost? _host;
     private string? _at; // current stop name, CrashMarker, or null (still at the initial break)
     private bool _disposed;
 
@@ -46,6 +46,8 @@ public sealed class LiveTarget : Target
         {
             return; // already here
         }
+
+        SkipIfLiveBpmdUnsupported();
 
         // Runs forward to the marker; throws if the process exits/crashes before reaching it. The
         // managed module for bpmd is flavor-specific (desktop's is the EXE, .NET Core's the DLL).
@@ -71,16 +73,38 @@ public sealed class LiveTarget : Target
     /// </summary>
     public void RunToBreakpoint()
     {
+        SkipIfLiveBpmdUnsupported();
+
         Engine.RunToBreakpoint();
         _at = null; // arbitrary, caller-managed location — not a named point
         ReplayContext.Current?.Add(ReplayStepKind.Navigate, "RunToBreakpoint()", null);
+    }
+
+    /// <summary>
+    /// Live <c>bpmd</c> cannot bind in a self-contained single-file image under the lldb host: bpmd arms a
+    /// JIT/prestub notification breakpoint on a CoreCLR routine, but in a self-contained single-file
+    /// publish the runtime is statically linked into the (symbol-stripped) app image, so lldb has no
+    /// symbol to place that breakpoint on and the debuggee simply runs past every managed stop point. The
+    /// .NET Core flavor keeps CoreCLR as a distinct <c>libcoreclr.so</c> module, so the same notification
+    /// breakpoint resolves there. This applies uniformly to every live, single-file, lldb test that
+    /// navigates via a managed stop point, so it is enforced here rather than per test. See
+    /// issues.md#bpmd-singlefile-live-lldb.
+    /// </summary>
+    private void SkipIfLiveBpmdUnsupported()
+    {
+        if (Host == Host.Lldb && Flavor == Flavor.SingleFile)
+        {
+            HarnessSkipException.Now(
+                "live bpmd cannot bind in a single-file image under lldb (CoreCLR is statically linked and " +
+                "symbol-stripped); see issues.md#bpmd-singlefile-live-lldb");
+        }
     }
 
     protected override SosOutput SosCore(string command) => Engine.Sos(command);
 
     protected override SosOutput ExecuteCore(string command) => Engine.Execute(command);
 
-    private ChildEngineClient Engine =>
+    private ILiveDebuggerHost Engine =>
         _host ?? throw new ObjectDisposedException(nameof(LiveTarget));
 
     public override void Dispose()

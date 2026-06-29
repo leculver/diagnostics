@@ -17,7 +17,7 @@ public sealed class DumpHeapStringsTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.NestedException]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpHeap_Strings(TestConfig config)
     {

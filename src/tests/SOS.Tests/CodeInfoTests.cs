@@ -16,7 +16,7 @@ public sealed class CodeInfoTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task EhInfo_ReportsClauses(TestConfig config)
     {
@@ -46,7 +46,7 @@ public sealed class CodeInfoTests
         Assert.Equal(lockHolder.MethodDesc.Value, byIp.MethodDesc);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task GcInfo_ReportsEncoding(TestConfig config)
     {

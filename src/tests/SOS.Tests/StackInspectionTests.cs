@@ -19,7 +19,7 @@ public sealed class StackInspectionTests
     public static TheoryData<TestConfig> CdbMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpStackObjects_ListsStackRoots(TestConfig config)
     {
@@ -40,7 +40,7 @@ public sealed class StackInspectionTests
         target.Sos($"dso").AssertContains("LocalUniqueMarker");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task ParallelStacks_GroupsThreadsByCallStack(TestConfig config)
     {
@@ -53,7 +53,7 @@ public sealed class StackInspectionTests
         Assert.Matches(@"\d+ threads", ps.Text); // the "==> N threads with M roots" footer
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(CdbMatrix))]
     public async Task DumpStack_WalksNativeAndManagedFrames(TestConfig config)
     {
@@ -65,7 +65,7 @@ public sealed class StackInspectionTests
         stack.AssertContains("SosHarnessScenarios.Main()");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(CdbMatrix))]
     public async Task EeStack_WalksAllThreads(TestConfig config)
     {

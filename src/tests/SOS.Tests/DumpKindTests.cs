@@ -18,7 +18,7 @@ public sealed class DumpKindTests
     public static TheoryData<TestConfig> MiniMatrix =>
         TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core, Host.AllValid, Liveness.Dump, dumpKind: DumpKind.Mini);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(MiniMatrix))]
     public async Task MiniDump_LoadsAndIsUsable(TestConfig config)
     {

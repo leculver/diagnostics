@@ -17,7 +17,7 @@ public sealed class DiagnosticCommandTests
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpGcData_ReportsGcStatistics(TestConfig config)
     {
@@ -27,7 +27,7 @@ public sealed class DiagnosticCommandTests
         target.Sos("dumpgcdata").AssertContains("concurrent GCs");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task SosStatus_ReportsTargetAndRuntime(TestConfig config)
     {
@@ -39,7 +39,7 @@ public sealed class DiagnosticCommandTests
         Assert.Contains(".NET", status.Text, StringComparison.Ordinal);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task Logging_ReportsState(TestConfig config)
     {
@@ -50,7 +50,7 @@ public sealed class DiagnosticCommandTests
         target.Sos("logging").AssertContains("Logging");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task LogOpenClose_CyclesConsoleLog(TestConfig config)
     {
@@ -70,12 +70,14 @@ public sealed class DiagnosticCommandTests
         }
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task Clrma_DrivesManagedAnalysis(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
+
+        KnownIssues.SkipClrmaOnLldb(config.Host);
 
         // clrma drives the CLRMA provider (used by Watson / !analyze) and prints the managed thread analysis.
         SosOutput clrma = target.Sos("clrma");

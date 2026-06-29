@@ -39,10 +39,12 @@ public static class RepoLayout
         _ => "x64",
     };
 
-    /// <summary>The OS token used in repo native artifact paths (currently Windows-only).</summary>
+    /// <summary>The OS token used in repo native artifact paths. The native build lowercases the OS token
+    /// for non-Windows (e.g. <c>linux.x64.Debug</c>, <c>osx.arm64.Debug</c>) but keeps <c>Windows_NT</c> on
+    /// Windows, so match that casing here or the native output directory won't be found.</summary>
     public static string TargetOS { get; } =
         OperatingSystem.IsWindows() ? "Windows_NT" :
-        OperatingSystem.IsMacOS() ? "OSX" : "Linux";
+        OperatingSystem.IsMacOS() ? "osx" : "linux";
 
     /// <summary>The runtime identifier the harness builds/publishes against (e.g. <c>win-x64</c>).</summary>
     public static string Rid =>
@@ -50,6 +52,10 @@ public static class RepoLayout
 
     /// <summary>The repo's locally-acquired .NET host (<c>.dotnet/dotnet.exe</c>) used to shell out builds.</summary>
     public static string DotNetExe => Path.Combine(Root, ".dotnet", OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+
+    /// <summary>The platform suffix for an apphost executable: <c>.exe</c> on Windows, none elsewhere
+    /// (Linux/macOS apphosts have no extension).</summary>
+    public static string ExeSuffix => OperatingSystem.IsWindows() ? ".exe" : string.Empty;
 
     /// <summary>Path to a debuggee project under the SOS.UnitTests Debuggees tree.</summary>
     public static string DebuggeeProject(string name) =>

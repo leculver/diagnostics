@@ -20,7 +20,7 @@ public sealed class DumpHeapObjectsTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpHeap_ObjectsStatisticsAndSize(TestConfig config)
     {

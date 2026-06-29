@@ -17,7 +17,7 @@ public sealed class GcWhereTests
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
     public static TheoryData<TestConfig> StructureMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.AllValid, Liveness.Dump);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(StructureMatrix))]
     public async Task GcWhere_Structure(TestConfig config)
     {
@@ -41,7 +41,7 @@ public sealed class GcWhereTests
         return obj;
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task GcWhere_Moves(TestConfig config)
     {

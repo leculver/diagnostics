@@ -17,7 +17,7 @@ public sealed class ObjectInspectionTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpObj_Mt_Class_Md_Chain(TestConfig config)
     {
@@ -32,9 +32,6 @@ public sealed class ObjectInspectionTests
         Assert.Equal(24, obj.Size);
         ulong mt = obj.MethodTable;
         Assert.NotEqual(0ul, mt);
-
-        // do is an alias for dumpobj.
-        target.Sos($"do {marker:x}").AssertContains("ThinLockMarker");
 
         // dumpmt -MD: the type's method table and its method slot list (Object's virtuals + the ctor).
         DumpMtResult dumpMt = target.DumpMt(mt, methods: true);
@@ -58,9 +55,13 @@ public sealed class ObjectInspectionTests
         MethodDumpResult dumpMd = target.DumpMd(ctor.MethodDesc);
         Assert.Contains("ThinLockMarker..ctor", dumpMd.MethodName, StringComparison.Ordinal);
         Assert.Equal(mt, dumpMd.MethodTable);
+
+        // do is an alias for dumpobj. (Asserted last because the alias collides with lldb's built-in 'do'.)
+        KnownIssues.SkipDoAliasOnLldb(config.Host);
+        target.Sos($"do {marker:x}").AssertContains("ThinLockMarker");
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpObj_NoFields_OmitsFieldTable(TestConfig config)
     {
@@ -77,7 +78,7 @@ public sealed class ObjectInspectionTests
         Assert.Equal(full.MethodTable, noFields.MethodTable);
     }
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task Ip2md_ResolvesJittedMethodWithSource(TestConfig config)
     {

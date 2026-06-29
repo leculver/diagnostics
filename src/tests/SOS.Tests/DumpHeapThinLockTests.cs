@@ -18,7 +18,7 @@ public sealed class DumpHeapThinLockTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [Theory]
+    [MatrixTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpHeap_ThinLock(TestConfig config)
     {
