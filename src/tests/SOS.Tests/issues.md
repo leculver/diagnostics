@@ -6,24 +6,6 @@ and this note stay together and greppable. Where a known-unsupported command is 
 test, the test verifies everything that works on that config and then returns early — it passes (not
 skipped) rather than discarding the assertions that already succeeded.
 
-## gcwhere-live-gc
-
-Driving the `SosHarnessScenarios` debuggee **live** through the generation-promotion markers crashes the
-debuggee. `GcWhere_Moves` sets a `bpmd` on each of `AtGen0`/`AtGen1`/`AtGen2` and runs forward; the
-debuggee calls a blocking `GC.Collect(2)` between the markers. With the gen-marker breakpoints armed,
-continuing from `gen1` through `GC.Collect(2)` aborts the debuggee with:
-
-```
-Fatal error. Internal CLR error. (0x80131506)
-   at SosHarnessScenarios.Main()
-```
-
-This is an interaction between live managed breakpoints on the GC-bracketing markers and a full blocking
-GC under dbgeng (the parked worker threads in the consolidated debuggee likely aggravate it). The **dump**
-path exercises the exact same gen0→gen1→gen2 progression (each stop is captured independently), so the
-"object moves across generations" assertion still runs there. Both `GcWhere_Moves` and `GcWhere_Structure`
-source a dump-only matrix (`DumpMatrix`, `Liveness.Dump`), so no live rows are generated.
-
 ## bpmd-singlefile-live-lldb
 
 **Configuration:** any **live** test on the **lldb** host against a **SingleFile** target — i.e. every test
