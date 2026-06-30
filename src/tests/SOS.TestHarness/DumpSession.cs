@@ -35,8 +35,11 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     public string StopName { get; }
     public Flavor Flavor { get; }
     public string DumpPath { get; }
+    public CoreVersion CoreVersion { get; }
+    public Dac Dac { get; }
 
-    internal DumpSession(Host hostKind, string targetName, string stopName, Flavor flavor, string dumpPath, bool publicSymbols = false)
+    internal DumpSession(Host hostKind, string targetName, string stopName, Flavor flavor, string dumpPath, bool publicSymbols = false,
+                         CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
     {
         _hostKind = hostKind;
         Host = hostKind;
@@ -45,6 +48,8 @@ internal sealed class DumpSession : IPooledHost, IDisposable
         Flavor = flavor;
         DumpPath = dumpPath;
         _publicSymbols = publicSymbols;
+        CoreVersion = coreVersion;
+        Dac = dac;
 
         // dotnet-dump children spin on stdin -> bound to one via the slot. cdb children block
         // when idle -> keep alive concurrently (no slot), which is the subprocess-backend payoff.
@@ -53,7 +58,8 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
         if (!_pooled)
         {
-            _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath, _publicSymbols);
+            _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath, _publicSymbols, dac, coreVersion,
+                SnapshotStore.TargetExe(flavor, targetName, coreVersion));
             _host.LoadSos();
         }
     }
@@ -86,7 +92,8 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
     void IPooledHost.OpenHost()
     {
-        _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath, _publicSymbols);
+        _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath, _publicSymbols, Dac, CoreVersion,
+            SnapshotStore.TargetExe(Flavor, TargetName, CoreVersion));
         _host.LoadSos();
     }
 

@@ -26,7 +26,7 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
 
     public string Name { get; }
 
-    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir, bool publicSymbols)
+    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir, bool publicSymbols, Dac dac)
     {
         Name = name;
 
@@ -74,15 +74,20 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
         _reader.Start();
 
         WaitForReady(TimeSpan.FromSeconds(120));
+
+        // Select the DAC for this config's Dac axis (Legacy => false, CDac on .NET 11+ => true). SOS is
+        // already loaded by the time the child reports ready, so issue it now. The same dump is reused
+        // across both DAC values — only this debug-time toggle differs.
+        Send("!runtimes --usecdac " + DacPolicy.UseCDac(dac));
     }
 
     /// <summary>A child engine over a crash/snapshot dump.</summary>
-    public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null, bool publicSymbols = false) =>
-        new(hostName, "dump", new[] { dumpPath }, dacDir, publicSymbols);
+    public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null, bool publicSymbols = false, Dac dac = Dac.Legacy) =>
+        new(hostName, "dump", new[] { dumpPath }, dacDir, publicSymbols, dac);
 
     /// <summary>A live child engine that launches the target (parked at the loader break, SOS loaded).</summary>
-    public static ChildEngineClient ForLive(string hostName, string exePath, string? dacDir = null) =>
-        new(hostName, "live", new[] { exePath }, dacDir, publicSymbols: false);
+    public static ChildEngineClient ForLive(string hostName, string exePath, string? dacDir = null, Dac dac = Dac.Legacy) =>
+        new(hostName, "live", new[] { exePath }, dacDir, publicSymbols: false, dac);
 
     public void LoadSos()
     {

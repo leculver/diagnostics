@@ -26,12 +26,16 @@ public sealed class DotNetDumpHost : IDebuggerHost
     private readonly BlockingCollection<string> _lines = new();
     private readonly Thread _reader;
     private readonly Flavor _flavor;
+    private readonly Dac _dac;
+    private readonly CoreVersion _coreVersion;
 
     public string Name => "dotnet-dump";
 
-    public DotNetDumpHost(string dumpPath, Flavor flavor)
+    public DotNetDumpHost(string dumpPath, Flavor flavor, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10)
     {
         _flavor = flavor;
+        _dac = dac;
+        _coreVersion = coreVersion;
         ProcessStartInfo psi = new()
         {
             RedirectStandardInput = true,
@@ -84,20 +88,16 @@ public sealed class DotNetDumpHost : IDebuggerHost
         // native directory (a *local directory*, no network) so it resolves the DAC for the dump's
         // coreclr build locally and the session stays hermetic. Mirrors LldbCliHost. Other flavors find
         // their DAC next to the on-disk runtime and need no override.
-        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory is { Length: > 0 } dacDir)
+        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory(_coreVersion) is { Length: > 0 } dacDir)
         {
             Run($"setsymbolserver -directory \"{dacDir}\"");
         }
 
-        // Local-dev escape hatch (off by default; never set in CI). On a machine with mismatched private
-        // runtime builds the bundled cDAC may not match the dump's coreclr and the managed
-        // ExtensionCommands surface that as "No CLR runtime found". Setting SOSHARNESS_USECDAC=false forces
-        // the in-box legacy DAC so the harness can be validated end to end on such a machine. This only
-        // changes which DAC SOS loads, not any harness behavior. (Mirrors the LldbCliHost knob.)
-        if (Environment.GetEnvironmentVariable("SOSHARNESS_USECDAC") is { Length: > 0 } useCDac)
-        {
-            Run($"runtimes --usecdac {useCDac}");
-        }
+        // Select the DAC for this config's Dac axis: Legacy => `--usecdac false`, CDac (.NET 11+ only) =>
+        // `--usecdac true`. The same dump is reused across both, so only this debug-time toggle differs.
+        // SOSHARNESS_USECDAC (off by default; never set in CI) is a global clamp that overrides the axis on
+        // a dev box whose installed runtimes are skewed such that the cDAC can't load. (Mirrors LldbCliHost.)
+        Run($"runtimes --usecdac {DacPolicy.UseCDac(_dac)}");
     }
 
     public SosOutput Execute(string command) => new(Name, command, Run(command));

@@ -17,16 +17,27 @@ namespace SOS.TestHarness;
 public sealed class LldbCliHost : LldbHostBase
 {
     private readonly Flavor _flavor;
+    private readonly Dac _dac;
+    private readonly CoreVersion _coreVersion;
 
     public override string Name => "lldb";
 
-    public LldbCliHost(string dumpPath, Flavor flavor)
+    public LldbCliHost(string dumpPath, Flavor flavor, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10, string? targetExe = null)
     {
         _flavor = flavor;
+        _dac = dac;
+        _coreVersion = coreVersion;
         StartLldb();
 
-        // Load the core. SOS is loaded later in LoadSos (the harness calls it after construction).
-        Run($"target create --core \"{dumpPath}\"");
+        // Load the core. Pass the target executable as the module so lldb can map the program image —
+        // essential for self-contained single-file bundles (coreclr is embedded in the exe) and for
+        // createdump-generated crash cores, whose notes alone don't let lldb locate the single-file
+        // module (SOS then reports "Failed to find runtime module (libcoreclr.so)"). Mirrors the legacy
+        // SOSRunner, which always passed the host exe. SOS is loaded later in LoadSos.
+        string create = string.IsNullOrEmpty(targetExe)
+            ? $"target create --core \"{dumpPath}\""
+            : $"target create --core \"{dumpPath}\" \"{targetExe}\"";
+        Run(create);
     }
 
     public override void LoadSos()
@@ -40,20 +51,15 @@ public sealed class LldbCliHost : LldbHostBase
         // resolves the DAC for the dump's coreclr build-id from there. This is a *local directory*
         // (no network), so the session stays hermetic. Other flavors find their DAC next to the on-disk
         // runtime and need no override. (cdb does the equivalent via `.cordll -lp`.)
-        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory is { Length: > 0 } dacDir)
+        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory(_coreVersion) is { Length: > 0 } dacDir)
         {
             Run($"setsymbolserver -directory \"{dacDir}\"");
         }
 
-        // Local-dev escape hatch (off by default; never set in CI). When a machine has multiple
-        // mismatched private runtime builds installed, the bundled cDAC (libmscordaccore_universal)
-        // may not match the dump's coreclr and fails to load, which the managed ExtensionCommands
-        // surface as "No CLR runtime found". Setting SOSHARNESS_USECDAC=false forces the in-box
-        // legacy DAC (selected per the dump's coreclr build), letting the harness be validated end to
-        // end on such a machine. This only changes which DAC SOS loads, not any harness behavior.
-        if (Environment.GetEnvironmentVariable("SOSHARNESS_USECDAC") is { Length: > 0 } useCDac)
-        {
-            Run($"runtimes --usecdac {useCDac}");
-        }
+        // Select the DAC for this config's Dac axis: Legacy => `--usecdac false`, CDac (.NET 11+ only) =>
+        // `--usecdac true`. The same dump is reused across both, so only this debug-time toggle differs.
+        // SOSHARNESS_USECDAC (off by default; never set in CI) is a global clamp that overrides the axis on
+        // a dev box whose installed runtimes are skewed such that the cDAC can't load.
+        Run($"runtimes --usecdac {DacPolicy.UseCDac(_dac)}");
     }
 }

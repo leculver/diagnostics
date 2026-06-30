@@ -33,6 +33,12 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
     /// <summary>Workstation vs. server GC.</summary>
     public GcType GcType { get; private set; }
 
+    /// <summary>The .NET Core runtime version the target is built and dumped against (a single flag).</summary>
+    public CoreVersion CoreVersion { get; private set; }
+
+    /// <summary>Which DAC SOS debugs with (Legacy / CDac). cDAC is only valid on .NET 11+ (see <see cref="IsValid"/>).</summary>
+    public Dac Dac { get; private set; }
+
     /// <summary>The dump kind (Full / Mini). Always <see cref="DumpKind.Full"/> for live targets (no dump).</summary>
     public DumpKind DumpKind { get; private set; }
 
@@ -48,7 +54,8 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
     }
 
     public TestConfig(string target, Host host, Flavor flavor, Liveness liveness,
-                      GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Full, bool publicSymbols = false)
+                      GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Full, bool publicSymbols = false,
+                      CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
     {
         Target = target;
         Host = host;
@@ -57,6 +64,8 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         GcType = gcType;
         DumpKind = dumpKind;
         PublicSymbols = publicSymbols;
+        CoreVersion = coreVersion;
+        Dac = dac;
     }
 
     /// <summary>True for a live process target; false for a post-mortem dump.</summary>
@@ -64,7 +73,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
 
     /// <summary>Return a copy with <see cref="PublicSymbols"/> set (for the OS-symbol Facts).</summary>
     public TestConfig WithPublicSymbols(bool value = true) =>
-        new(Target, Host, Flavor, Liveness, GcType, DumpKind, value);
+        new(Target, Host, Flavor, Liveness, GcType, DumpKind, value, CoreVersion, Dac);
 
     /// <summary>
     /// Generate the cross-product of the requested axes as a single-column theory source, filtered to the
@@ -77,8 +86,8 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
     /// reduced-dump-only failures aren't swept into every test.</para>
     ///
     /// <para>Each axis can be narrowed at run time by a comma-separated env allow-list:
-    /// <c>SOSHARNESS_ONLY_HOSTS</c>, <c>_FLAVORS</c>, <c>_LIVENESS</c>, <c>_GCTYPE</c>, <c>_DUMPKIND</c>.</para>
-    /// </summary>
+    /// <c>SOSHARNESS_ONLY_HOSTS</c>, <c>_FLAVORS</c>, <c>_LIVENESS</c>, <c>_GCTYPE</c>, <c>_DUMPKIND</c>,
+    /// <c>_COREVERSIONS</c> (e.g. <c>Net10,Net11</c>), <c>_DAC</c> (e.g. <c>Legacy</c>).</para></summary>
     public static TheoryData<TestConfig> BuildMatrix(
         string[] targets,
         Flavor flavor = Flavor.AllValid,
@@ -86,10 +95,12 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         Liveness liveness = Liveness.AllValid,
         GcType gcType = GcType.Workstation,
         DumpKind dumpKind = DumpKind.Full,
-        bool publicSymbols = false)
+        bool publicSymbols = false,
+        CoreVersion coreVersion = CoreVersion.All,
+        Dac dac = Dac.All)
     {
         TheoryData<TestConfig> data = new();
-        foreach (TestConfig cfg in Permutations(targets, flavor, host, liveness, gcType, dumpKind, publicSymbols))
+        foreach (TestConfig cfg in Permutations(targets, flavor, host, liveness, gcType, dumpKind, publicSymbols, coreVersion, dac))
         {
             data.Add(cfg);
         }
@@ -109,9 +120,15 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         Liveness liveness = Liveness.AllValid,
         GcType gcType = GcType.Workstation,
         DumpKind dumpKind = DumpKind.Full,
-        bool publicSymbols = false)
+        bool publicSymbols = false,
+        CoreVersion coreVersion = CoreVersion.All,
+        Dac dac = Dac.All)
     {
         HashSet<TestConfig> seen = new();
+
+        // Only ever expand versions the harness actually builds/installs; a requested bit outside the
+        // available set is silently dropped (the axis disables, it never positively enables — see CoreVersion).
+        CoreVersion requestedVersions = coreVersion & CoreVersions.Available;
 
         foreach (string target in targets)
         {
@@ -125,16 +142,22 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
                         {
                             foreach (DumpKind d in SingleFlags(dumpKind, "SOSHARNESS_ONLY_DUMPKIND"))
                             {
-                                // A live target has no dump, so DumpKind and PublicSymbols don't apply.
-                                // Collapse them to canonical values so we emit one live row, not one per
-                                // (DumpKind) permutation.
-                                DumpKind dk = l == Liveness.Live ? DumpKind.Full : d;
-                                bool pub = l == Liveness.Live ? false : publicSymbols;
-
-                                TestConfig cfg = new(target, h, f, l, g, dk, pub);
-                                if (IsValid(cfg) && seen.Add(cfg))
+                                foreach (CoreVersion cv in SingleFlags(requestedVersions, "SOSHARNESS_ONLY_COREVERSIONS"))
                                 {
-                                    yield return cfg;
+                                    foreach (Dac da in SingleFlags(dac, "SOSHARNESS_ONLY_DAC"))
+                                    {
+                                        // A live target has no dump, so DumpKind and PublicSymbols don't
+                                        // apply. Collapse them to canonical values so we emit one live row,
+                                        // not one per (DumpKind) permutation.
+                                        DumpKind dk = l == Liveness.Live ? DumpKind.Full : d;
+                                        bool pub = l == Liveness.Live ? false : publicSymbols;
+
+                                        TestConfig cfg = new(target, h, f, l, g, dk, pub, cv, da);
+                                        if (IsValid(cfg) && seen.Add(cfg))
+                                        {
+                                            yield return cfg;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -206,6 +229,15 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
             return false;
         }
 
+        // The cDAC (managed contract DAC) only exists on .NET 11+; on earlier runtimes only the legacy
+        // native DAC is available, so prune the CDac axis there. The same dump is reused across DAC values
+        // (only `runtimes --usecdac` differs at debug time), so this just removes the invalid debug-time
+        // variant, never a capture.
+        if (c.Dac == Dac.CDac && (uint)c.CoreVersion < (uint)CoreVersion.Net11)
+        {
+            return false;
+        }
+
         return true;
     }
 
@@ -252,6 +284,8 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         info.AddValue(nameof(GcType), GcType, typeof(GcType));
         info.AddValue(nameof(DumpKind), DumpKind, typeof(DumpKind));
         info.AddValue(nameof(PublicSymbols), PublicSymbols, typeof(bool));
+        info.AddValue(nameof(CoreVersion), CoreVersion, typeof(CoreVersion));
+        info.AddValue(nameof(Dac), Dac, typeof(Dac));
     }
 
     void IXunitSerializable.Deserialize(IXunitSerializationInfo info)
@@ -263,18 +297,24 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         GcType = info.GetValue<GcType>(nameof(GcType));
         DumpKind = info.GetValue<DumpKind>(nameof(DumpKind));
         PublicSymbols = info.GetValue<bool>(nameof(PublicSymbols));
+        CoreVersion = info.GetValue<CoreVersion>(nameof(CoreVersion));
+        Dac = info.GetValue<Dac>(nameof(Dac));
     }
 
     /// <summary>
     /// A legible, deterministic id used for the theory display name and de-duplication, e.g.
-    /// <c>scenarios/Cdb/Core/Dump/Workstation/Full</c> (the dump kind is omitted for live rows, which have
-    /// no dump, and a <c>/pub</c> suffix marks the public-symbol variant).
+    /// <c>scenarios/Cdb/Core/net10/Dump/Workstation/Full</c> (the runtime version is always shown; the dump
+    /// kind is omitted for live rows; a <c>/cdac</c> suffix marks the cDAC variant and <c>/pub</c> the
+    /// public-symbol variant). Legacy DAC is the implicit default and isn't tokenized, so single-DAC ids
+    /// stay terse.
     /// </summary>
     public override string ToString()
     {
+        string version = "/net" + CoreVersions.Major(CoreVersion);
         string dump = IsLive ? string.Empty : "/" + DumpKind;
+        string dac = Dac == Dac.CDac ? "/cdac" : string.Empty;
         string pub = PublicSymbols ? "/pub" : string.Empty;
-        return $"{Target}/{Host}/{Flavor}/{Liveness}/{GcType}{dump}{pub}";
+        return $"{Target}/{Host}/{Flavor}{version}/{Liveness}/{GcType}{dump}{dac}{pub}";
     }
 
     public bool Equals(TestConfig? other) =>
@@ -285,10 +325,12 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         && Liveness == other.Liveness
         && GcType == other.GcType
         && DumpKind == other.DumpKind
-        && PublicSymbols == other.PublicSymbols;
+        && PublicSymbols == other.PublicSymbols
+        && CoreVersion == other.CoreVersion
+        && Dac == other.Dac;
 
     public override bool Equals(object? obj) => Equals(obj as TestConfig);
 
     public override int GetHashCode() =>
-        HashCode.Combine(Target, Host, Flavor, Liveness, GcType, DumpKind, PublicSymbols);
+        HashCode.Combine(Target, Host, Flavor, Liveness, GcType, DumpKind, PublicSymbols, HashCode.Combine(CoreVersion, Dac));
 }

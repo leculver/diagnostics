@@ -58,15 +58,16 @@ public static class ToolPaths
 
     /// <summary>
     /// Directory containing the DAC (<c>mscordaccore.dll</c> / <c>libmscordaccore.so</c> /
-    /// <c>libmscordaccore.dylib</c>) that matches the runtime a self-contained single-file debuggee
-    /// bundles. Self-contained single-file apps carry the runtime inside the exe, so a native debugger
-    /// can't find the DAC next to a runtime on disk and (hermetically) can't download it. The cdb host
-    /// loads it explicitly via <c>.cordll -lp</c>; the lldb host adds it as a local symbol-store
-    /// directory via <c>setsymbolserver -directory</c>. The version is the repo's pinned net10 runtime
-    /// (<c>MicrosoftNETCoreApp100Version</c>), which the publish resolves against, and the DAC ships in
-    /// that runtime pack. Returns <c>null</c> if it can't be located.
+    /// <c>libmscordaccore.dylib</c>) that matches the runtime a self-contained single-file debuggee of the
+    /// given <paramref name="coreVersion"/> bundles. Self-contained single-file apps carry the runtime
+    /// inside the exe, so a native debugger can't find the DAC next to a runtime on disk and (hermetically)
+    /// can't download it. The cdb host loads it explicitly via <c>.cordll -lp</c>; the lldb host adds it as a
+    /// local symbol-store directory via <c>setsymbolserver -directory</c>. The version is the runtime patch
+    /// the single-file publish resolved against (from the install manifest, or the highest patch of that
+    /// major present in the pack cache). Returns <c>null</c> if it can't be located.
     /// </summary>
-    public static string? SingleFileDacDirectory => s_singleFileDacDirectory.Value;
+    public static string? SingleFileDacDirectory(CoreVersion coreVersion) =>
+        s_singleFileDacDirectory.GetOrAdd(coreVersion, ResolveSingleFileDacDirectory);
 
     // Lazy so each host only resolves the tools it actually needs: the non-Windows lldb/dotnet-dump hosts
     // never touch the Windows-only dbgeng/sos.dll resolvers (which would throw for lack of those payloads),
@@ -77,7 +78,7 @@ public static class ToolPaths
     private static readonly Lazy<string> s_lldbPluginPath = new(ResolveLldbPluginPath);
     private static readonly Lazy<string> s_lldbExe = new(ResolveLldbExe);
     private static readonly Lazy<string> s_hostRuntimeDirectory = new(ResolveHostRuntimeDirectory);
-    private static readonly Lazy<string?> s_singleFileDacDirectory = new(ResolveSingleFileDacDirectory);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<CoreVersion, string?> s_singleFileDacDirectory = new();
 
     private static string ResolveDbgEngDirectory()
     {
@@ -302,16 +303,17 @@ public static class ToolPaths
             "is produced.", published);
     }
 
-    private static string? ResolveSingleFileDacDirectory()
+    private static string? ResolveSingleFileDacDirectory(CoreVersion coreVersion)
     {
         string rid = RepoLayout.Rid; // win-x64 / linux-x64 / osx-arm64 / ...
         string packId = $"microsoft.netcore.app.runtime.{rid}";
         string relativeNative = Path.Combine("runtimes", rid, "native");
         string dacFileName = DacFileName; // mscordaccore.dll / libmscordaccore.so / libmscordaccore.dylib
+        int major = CoreVersions.Major(coreVersion);
 
-        // Preferred: the repo's pinned net10 runtime version (what the self-contained single-file
-        // publish resolves against), read straight from eng/Versions.props.
-        string? pinned = ReadVersionsProp("MicrosoftNETCoreApp100Version");
+        // Preferred: the exact runtime version the single-file publish resolved against (what the install
+        // manifest recorded for this framework), read straight from the test install.
+        string? pinned = CoreVersions.RuntimeVersion(coreVersion);
         if (!string.IsNullOrEmpty(pinned))
         {
             foreach (string root in NuGetPackageRoots())
@@ -324,7 +326,8 @@ public static class ToolPaths
             }
         }
 
-        // Fallback: the highest net10 runtime pack present.
+        // Fallback: the highest patch of this major present in the runtime-pack cache.
+        string majorPrefix = $"{major}.0.";
         foreach (string root in NuGetPackageRoots())
         {
             string pkg = Path.Combine(root, packId);
@@ -335,7 +338,7 @@ public static class ToolPaths
 
             string? best = Directory.GetDirectories(pkg)
                 .Select(Path.GetFileName)
-                .Where(v => v is not null && v.StartsWith("10.0.", StringComparison.Ordinal))
+                .Where(v => v is not null && v.StartsWith(majorPrefix, StringComparison.Ordinal))
                 .OrderByDescending(v => v, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
             if (best is not null)
@@ -356,33 +359,6 @@ public static class ToolPaths
     private static string DacFileName =>
         OperatingSystem.IsWindows() ? "mscordaccore.dll" :
         OperatingSystem.IsMacOS() ? "libmscordaccore.dylib" : "libmscordaccore.so";
-
-    private static string? ReadVersionsProp(string name)
-    {
-        string versionsProps = Path.Combine(RepoLayout.Root, "eng", "Versions.props");
-        if (!File.Exists(versionsProps))
-        {
-            return null;
-        }
-
-        foreach (string line in File.ReadLines(versionsProps))
-        {
-            int open = line.IndexOf($"<{name}>", StringComparison.Ordinal);
-            if (open < 0)
-            {
-                continue;
-            }
-
-            open += name.Length + 2;
-            int close = line.IndexOf($"</{name}>", open, StringComparison.Ordinal);
-            if (close > open)
-            {
-                return line.Substring(open, close - open).Trim();
-            }
-        }
-
-        return null;
-    }
 
     private static IEnumerable<string> NuGetPackageRoots()
     {

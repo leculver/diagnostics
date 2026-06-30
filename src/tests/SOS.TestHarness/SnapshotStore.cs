@@ -7,15 +7,18 @@ using System.Diagnostics;
 namespace SOS.TestHarness;
 
 /// <summary>
-/// Produces and memoizes the runnable debuggee and the dump for each <c>(flavor, target, stopPoint)</c>.
-/// Each <c>(flavor, target)</c> is acquired once and captured once into its own dump directory — so no
-/// two tests ever build or write the same artifact.
+/// Produces and memoizes the runnable debuggee and the dump for each <c>(flavor, target, coreVersion,
+/// stopPoint)</c>. Each <c>(flavor, target, coreVersion)</c> is acquired once and captured once into its
+/// own dump directory — so no two tests ever build or write the same artifact. The DAC axis is not a
+/// capture dimension: legacy and cDAC reuse the same dump (only <c>runtimes --usecdac</c> differs at debug
+/// time), so it never appears in these keys.
 ///
 /// Debuggee acquisition follows the repo's build model:
 /// <list type="bullet">
-///   <item><b>Core (net10.0)</b> is the pre-built debuggee produced by the repo build
-///   (<c>Debuggees.proj</c>) under <c>artifacts/bin/&lt;Name&gt;/&lt;Config&gt;/net10.0</c>; the harness
-///   consumes it directly (and builds the single project on demand if it isn't there yet).</item>
+///   <item><b>Core (net8.0–net11.0)</b> is the pre-built debuggee produced by the repo build
+///   (<c>Debuggees.proj</c>) under <c>artifacts/bin/&lt;Name&gt;/&lt;Config&gt;/net{N}.0</c>; the harness
+///   consumes it directly (and builds the single project on demand if it isn't there yet), launching it
+///   against the multi-version test runtime install so its apphost binds the matching runtime.</item>
 ///   <item><b>Framework (net462)</b> and <b>SingleFile</b> are produced on the fly by building/publishing
 ///   the repo debuggee csproj (with <c>BuildProjectFramework</c>) into the harness scratch tree, the same
 ///   way the legacy harness's <c>cli</c> build process does.</item>
@@ -32,11 +35,13 @@ namespace SOS.TestHarness;
 /// </summary>
 public static class SnapshotStore
 {
-    // One build/publish per (flavor, target) (distinct output dirs); thread-safe via Lazy.
-    private static readonly ConcurrentDictionary<(Flavor Flavor, string Target), Lazy<string>> s_targetExe = new();
+    // One build/publish per (flavor, target, coreVersion) (distinct output dirs); thread-safe via Lazy.
+    private static readonly ConcurrentDictionary<(Flavor Flavor, string Target, CoreVersion CoreVersion), Lazy<string>> s_targetExe = new();
 
-    // One capture per (flavor, target, gcType, dumpKind) (distinct dump dirs); thread-safe via Lazy.
-    private static readonly ConcurrentDictionary<(Flavor Flavor, string Target, GcType GcType, DumpKind DumpKind), Lazy<string>> s_captured = new();
+    // One capture per (flavor, target, gcType, dumpKind, coreVersion) (distinct dump dirs); thread-safe via
+    // Lazy. The DAC axis is deliberately absent: the same dump is reused for both legacy and cDAC (only
+    // `runtimes --usecdac` differs at debug time), so capture must not be keyed on it.
+    private static readonly ConcurrentDictionary<(Flavor Flavor, string Target, GcType GcType, DumpKind DumpKind, CoreVersion CoreVersion), Lazy<string>> s_captured = new();
 
     // The out-of-process desktop capturer, located/built once.
     private static readonly Lazy<string> s_capturerDll = new(() => SubprocessDll("SOS.TestHarness.Capturer"));
@@ -49,43 +54,44 @@ public static class SnapshotStore
     /// <summary>Path to the built EngineHost.dll (the subprocess dbgeng backend), produced on first use.</summary>
     public static string EngineHostDll => s_engineHostDll.Value;
 
-    /// <summary>Path to the dump for one stop point of a target in a flavor/GC/dump-kind, producing it on first use.</summary>
-    public static string GetDump(Flavor flavor, string targetName, string stopName, GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Full)
+    /// <summary>Path to the dump for one stop point of a target in a flavor/GC/dump-kind/version, producing it on first use.</summary>
+    public static string GetDump(Flavor flavor, string targetName, string stopName, GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Full, CoreVersion coreVersion = CoreVersion.Net10)
     {
         TargetDefinition target = TargetCatalog.Get(targetName);
         target.Stop(stopName); // validate
 
         string dumpDir = s_captured
-            .GetOrAdd((flavor, targetName, gcType, dumpKind), key => new Lazy<string>(() => CaptureTarget(key.Flavor, TargetCatalog.Get(key.Target), key.GcType, key.DumpKind)))
+            .GetOrAdd((flavor, targetName, gcType, dumpKind, coreVersion), key => new Lazy<string>(() => CaptureTarget(key.Flavor, TargetCatalog.Get(key.Target), key.GcType, key.DumpKind, key.CoreVersion)))
             .Value;
 
         string dump = Path.Combine(dumpDir, stopName + ".dmp");
         if (!File.Exists(dump))
         {
             throw new InvalidOperationException(
-                $"Capture of {flavor}/{gcType}/{dumpKind}/{targetName} did not produce a dump for stop '{stopName}' at '{dump}'.");
+                $"Capture of {flavor}/{gcType}/{dumpKind}/{CoreVersions.Tfm(coreVersion)}/{targetName} did not produce a dump for stop '{stopName}' at '{dump}'.");
         }
 
         return dump;
     }
 
-    /// <summary>Path to the runnable executable for a target in a flavor, producing it on first use.</summary>
-    public static string TargetExe(Flavor flavor, string targetName) =>
-        s_targetExe.GetOrAdd((flavor, targetName), k => new Lazy<string>(() => AcquireTarget(k.Flavor, TargetCatalog.Get(k.Target)))).Value;
+    /// <summary>Path to the runnable executable for a target in a flavor/version, producing it on first use.</summary>
+    public static string TargetExe(Flavor flavor, string targetName, CoreVersion coreVersion = CoreVersion.Net10) =>
+        s_targetExe.GetOrAdd((flavor, targetName, coreVersion), k => new Lazy<string>(() => AcquireTarget(k.Flavor, TargetCatalog.Get(k.Target), k.CoreVersion))).Value;
 
-    private static string DumpDir(Flavor flavor, string target, GcType gcType, DumpKind dumpKind) =>
+    private static string DumpDir(Flavor flavor, string target, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion) =>
         Path.Combine(RepoLayout.Scratch, "dumps", flavor.ToString().ToLowerInvariant(),
-            gcType.ToString().ToLowerInvariant(), dumpKind.ToString().ToLowerInvariant(), target);
+            gcType.ToString().ToLowerInvariant(), dumpKind.ToString().ToLowerInvariant(),
+            CoreVersions.Tfm(coreVersion), target);
 
-    private static string CaptureTarget(Flavor flavor, TargetDefinition target, GcType gcType, DumpKind dumpKind)
+    private static string CaptureTarget(Flavor flavor, TargetDefinition target, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion)
     {
-        string dumpDir = DumpDir(flavor, target.Name, gcType, dumpKind);
+        string dumpDir = DumpDir(flavor, target.Name, gcType, dumpKind, coreVersion);
         Directory.CreateDirectory(dumpDir);
 
         // Resolve (build if needed) the debuggee first, then reuse the cached dumps only if they were
         // captured from THIS exe (i.e. are at least as new as it). A rebuilt exe has a fresh PDB whose
         // GUID won't match an older dump, so a stale dump must be re-captured.
-        string exe = TargetExe(flavor, target.Name);
+        string exe = TargetExe(flavor, target.Name, coreVersion);
         DateTime exeTime = File.GetLastWriteTimeUtc(exe);
         if (target.StopPoints.All(s => IsUpToDate(Path.Combine(dumpDir, s.Name + ".dmp"), exeTime)))
         {
@@ -99,24 +105,24 @@ public static class SnapshotStore
             // Desktop: no diagnostics IPC; dbgeng captures both snapshot (bpmd) and crash (second-chance).
             // Run it out-of-process so a dbgeng crash dies with the child, not the test host. Framework is
             // constrained to DumpKind.Full (DbgEng full user-mode dump), so dumpKind isn't plumbed here.
-            CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir, gcType);
+            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType);
         }
         else if (isCrash && flavor == Flavor.SingleFile && OperatingSystem.IsWindows())
         {
             // Self-contained single-file on Windows doesn't ship/launch createdump, so capture its crash
             // with dbgeng like desktop (also out-of-process). On Linux/macOS the bundled runtime's
             // createdump handles single-file crashes, so we fall through to CaptureCrashViaCreatedump.
-            CaptureWithDbgEng(TargetExe(flavor, target.Name), target, dumpDir, gcType);
+            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType);
         }
         else if (isCrash)
         {
             // .NET Core crash: let the runtime's createdump write the dump.
-            CaptureCrashViaCreatedump(flavor, target, dumpDir, gcType, dumpKind);
+            CaptureCrashViaCreatedump(flavor, target, dumpDir, gcType, dumpKind, coreVersion);
         }
         else
         {
             // Snapshot stops on Core / SingleFile: self-snapshot mid-run via markers.
-            SelfCollectCapture(flavor, target, dumpDir, gcType, dumpKind);
+            SelfCollectCapture(flavor, target, dumpDir, gcType, dumpKind, coreVersion);
         }
 
         return dumpDir;
@@ -159,9 +165,9 @@ public static class SnapshotStore
     /// writes the full dump to the crash stop's path; the process exits non-zero (it crashed), so we
     /// verify the dump exists rather than the exit code.
     /// </summary>
-    private static void CaptureCrashViaCreatedump(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind)
+    private static void CaptureCrashViaCreatedump(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion)
     {
-        string exe = TargetExe(flavor, target.Name);
+        string exe = TargetExe(flavor, target.Name, coreVersion);
         StopPoint crash = target.StopPoints.Single(s => s.Kind == StopKind.Crash);
         string dumpPath = Path.Combine(dumpDir, crash.Name + ".dmp");
 
@@ -177,6 +183,7 @@ public static class SnapshotStore
         psi.Environment["DOTNET_DbgMiniDumpType"] = CreatedumpType(dumpKind); // Full(4) — required for SOS/ClrMD; Mini(2) keeps the heap
         psi.Environment["DOTNET_DbgMiniDumpName"] = dumpPath;
         psi.Environment["DOTNET_CreateDumpDiagnostics"] = "1";
+        ApplyRuntimeRoot(psi, flavor);
         ApplyMacOsDumpConfig(psi);
         ApplyGcType(psi, gcType);
 
@@ -212,6 +219,26 @@ public static class SnapshotStore
         psi.Environment["TMPDIR"] = "/tmp";
     }
 
+    /// <summary>
+    /// Point a framework-dependent (Core) debuggee at the multi-version test runtime install so its apphost
+    /// resolves the runtime matching its target framework (e.g. a net8 debuggee binds 8.0.x, net11 binds the
+    /// installed preview). Self-contained single-file and desktop Framework debuggees carry / don't use a
+    /// shared runtime, so this is a no-op for them. <c>DOTNET_MULTILEVEL_LOOKUP=0</c> keeps resolution
+    /// strictly within the test install (no machine-wide fallback), so the dump's coreclr — and therefore the
+    /// DAC SOS later loads — is the deterministic, on-disk one.
+    /// </summary>
+    private static void ApplyRuntimeRoot(ProcessStartInfo psi, Flavor flavor)
+    {
+        if (flavor != Flavor.Core)
+        {
+            return;
+        }
+
+        psi.Environment["DOTNET_ROOT"] = RepoLayout.DotnetTestRoot;
+        psi.Environment["DOTNET_ROOT(x86)"] = RepoLayout.DotnetTestRoot;
+        psi.Environment["DOTNET_MULTILEVEL_LOOKUP"] = "0";
+    }
+
     /// <summary>Apply the GC-mode env vars to a debuggee launch. Server forces a deterministic multi-heap
     /// GC (a fixed heap count with DATAS off, so it can't collapse back to a single heap).</summary>
     private static void ApplyGcType(ProcessStartInfo psi, GcType gcType)
@@ -230,9 +257,9 @@ public static class SnapshotStore
     /// <summary>The <c>dotnet-dump collect --type</c> value for a dump kind: Full, or Heap for Mini.</summary>
     private static string CollectType(DumpKind dumpKind) => dumpKind == DumpKind.Mini ? "Heap" : "Full";
 
-    private static void SelfCollectCapture(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind)
+    private static void SelfCollectCapture(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion)
     {
-        string exe = TargetExe(flavor, target.Name);
+        string exe = TargetExe(flavor, target.Name, coreVersion);
         ProcessStartInfo psi = new(exe)
         {
             WorkingDirectory = Path.GetDirectoryName(exe),
@@ -246,6 +273,7 @@ public static class SnapshotStore
         psi.Environment["SOSHARNESS_DOTNET"] = RepoLayout.DotNetExe;
         psi.Environment["SOSHARNESS_DOTNETDUMP_DLL"] = ToolPaths.DotNetDumpDll;
         psi.Environment["SOSHARNESS_DUMP_TYPE"] = CollectType(dumpKind);
+        ApplyRuntimeRoot(psi, flavor);
         ApplyMacOsDumpConfig(psi);
         ApplyGcType(psi, gcType);
 
@@ -263,39 +291,41 @@ public static class SnapshotStore
     /// Resolve the runnable debuggee for a flavor. Core is the repo's pre-built output; Framework and
     /// SingleFile are built/published on demand from the repo debuggee csproj.
     /// </summary>
-    private static string AcquireTarget(Flavor flavor, TargetDefinition target) => flavor switch
+    private static string AcquireTarget(Flavor flavor, TargetDefinition target, CoreVersion coreVersion) => flavor switch
     {
-        Flavor.Core => AcquireCore(target),
-        Flavor.Framework => BuildFlavor(flavor, target),
-        Flavor.SingleFile => BuildFlavor(flavor, target),
+        Flavor.Core => AcquireCore(target, coreVersion),
+        Flavor.Framework => BuildFlavor(flavor, target, coreVersion),
+        Flavor.SingleFile => BuildFlavor(flavor, target, coreVersion),
         _ => throw new ArgumentOutOfRangeException(nameof(flavor)),
     };
 
-    /// <summary>Consume the repo-built Core (net10.0) debuggee; build the single project on demand if it's
-    /// absent or older than the debuggee source (so a local debuggee edit is picked up).</summary>
-    private static string AcquireCore(TargetDefinition target)
+    /// <summary>Consume the repo-built Core debuggee for the requested version; build the single project on
+    /// demand if it's absent or older than the debuggee source (so a local debuggee edit is picked up).</summary>
+    private static string AcquireCore(TargetDefinition target, CoreVersion coreVersion)
     {
-        string exe = Path.Combine(RepoLayout.CoreDebuggeeDir(target.Project), target.Project + RepoLayout.ExeSuffix);
+        string tfm = CoreVersions.Tfm(coreVersion);
+        string exe = Path.Combine(RepoLayout.CoreDebuggeeDir(target.Project, tfm), target.Project + RepoLayout.ExeSuffix);
         string project = RepoLayout.DebuggeeProject(target.Project);
         if (IsUpToDate(exe, NewestSourceWriteTime(project)))
         {
             return exe;
         }
 
-        // Missing or stale relative to source — build just this debuggee for net10.0 (lands at the same
-        // conventional artifacts path).
+        // Missing or stale relative to source — build just this debuggee for the requested framework (lands
+        // at the same conventional artifacts path). Lock per project (not per framework): different TFMs of
+        // one csproj share its obj/ and project.assets.json, so concurrent restores would corrupt each other.
         lock (BuildLockFor(project))
         {
             if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
             {
                 RunToCompletion(RepoLayout.DotNetExe,
-                    $"build \"{project}\" -p:BuildProjectFramework=net10.0 -c {RepoLayout.ArtifactsConfiguration}");
+                    $"build \"{project}\" -p:BuildProjectFramework={tfm} -c {RepoLayout.ArtifactsConfiguration}");
             }
         }
 
         if (!File.Exists(exe))
         {
-            throw new InvalidOperationException($"Core build of {target.Project} did not produce '{exe}'.");
+            throw new InvalidOperationException($"Core build of {target.Project} ({tfm}) did not produce '{exe}'.");
         }
 
         return exe;
@@ -303,10 +333,14 @@ public static class SnapshotStore
 
     /// <summary>Build (Framework) or publish (SingleFile) the repo debuggee csproj into the scratch tree,
     /// reusing the cached exe when it's newer than the debuggee source.</summary>
-    private static string BuildFlavor(Flavor flavor, TargetDefinition target)
+    private static string BuildFlavor(Flavor flavor, TargetDefinition target, CoreVersion coreVersion)
     {
+        string tfm = CoreVersions.Tfm(coreVersion);
         string project = RepoLayout.DebuggeeProject(target.Project);
-        string outDir = Path.Combine(RepoLayout.Scratch, "targets", flavor.ToString().ToLowerInvariant(), target.Name);
+        // SingleFile is version-specific (the runtime is bundled), so key its scratch dir on the framework;
+        // Framework (net462) ignores coreVersion.
+        string flavorTag = flavor == Flavor.SingleFile ? $"{flavor}-{tfm}" : flavor.ToString();
+        string outDir = Path.Combine(RepoLayout.Scratch, "targets", flavorTag.ToLowerInvariant(), target.Name);
         string exe = Path.Combine(outDir, target.Project + RepoLayout.ExeSuffix);
 
         if (IsUpToDate(exe, NewestSourceWriteTime(project)))
@@ -323,14 +357,14 @@ public static class SnapshotStore
                 // a full (Windows) PDB next to the exe for the source-line tests.
                 $"build \"{project}\" -p:BuildProjectFramework=net462 -p:DebugType=full -p:DebugSymbols=true -c {config} -o \"{outDir}\"",
             Flavor.SingleFile =>
-                $"publish \"{project}\" -p:BuildProjectFramework=net10.0 -r {RepoLayout.Rid} --self-contained true " +
+                $"publish \"{project}\" -p:BuildProjectFramework={tfm} -r {RepoLayout.Rid} --self-contained true " +
                 $"-p:PublishSingleFile=true -c {config} -o \"{outDir}\"",
             _ => throw new ArgumentOutOfRangeException(nameof(flavor)),
         };
 
-        // Rebuild only when stale (above). Different flavors of one csproj share its obj/ (and
-        // project.assets.json), so building two flavors concurrently corrupts that shared restore —
-        // serialize builds per project.
+        // Rebuild only when stale (above). Different flavors/frameworks of one csproj share its obj/ (and
+        // project.assets.json), so building two concurrently corrupts that shared restore — serialize builds
+        // per project.
         lock (BuildLockFor(project))
         {
             if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
@@ -341,7 +375,7 @@ public static class SnapshotStore
 
         if (!File.Exists(exe))
         {
-            throw new InvalidOperationException($"Build/publish of {target.Project} ({flavor}) did not produce '{exe}'.");
+            throw new InvalidOperationException($"Build/publish of {target.Project} ({flavor}/{tfm}) did not produce '{exe}'.");
         }
 
         return exe;

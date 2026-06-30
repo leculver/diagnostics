@@ -21,16 +21,31 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
     private const int MaxResumes = 50;
 
     private readonly Flavor _flavor;
+    private readonly Dac _dac;
+    private readonly CoreVersion _coreVersion;
 
     public override string Name => "lldb-live";
 
-    public LldbLiveHost(string exePath, Flavor flavor)
+    public LldbLiveHost(string exePath, Flavor flavor, CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
     {
         _flavor = flavor;
+        _dac = dac;
+        _coreVersion = coreVersion;
 
         // The debuggee inherits the lldb process environment. Disable W^E so SOS's bpmd can patch JIT-ed
-        // code (see dotnet/diagnostics#3126), matching what the legacy live lldb harness set.
-        StartLldb(psi => psi.Environment["DOTNET_EnableWriteXorExecute"] = "0");
+        // code (see dotnet/diagnostics#3126), matching what the legacy live lldb harness set. For a
+        // framework-dependent (Core) debuggee, point its apphost at the multi-version test runtime install
+        // so it binds the runtime matching its target framework (net8 -> 8.0.x, net11 -> the preview).
+        StartLldb(psi =>
+        {
+            psi.Environment["DOTNET_EnableWriteXorExecute"] = "0";
+            if (_flavor == Flavor.Core)
+            {
+                psi.Environment["DOTNET_ROOT"] = RepoLayout.DotnetTestRoot;
+                psi.Environment["DOTNET_ROOT(x86)"] = RepoLayout.DotnetTestRoot;
+                psi.Environment["DOTNET_MULTILEVEL_LOOKUP"] = "0";
+            }
+        });
 
         Run($"target create \"{exePath}\"");
 
@@ -53,15 +68,14 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
         Run($"plugin load \"{ToolPaths.LldbPluginPath}\"");
         Run($"sethostruntime \"{ToolPaths.HostRuntimeDirectory}\"");
 
-        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory is { Length: > 0 } dacDir)
+        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory(_coreVersion) is { Length: > 0 } dacDir)
         {
             Run($"setsymbolserver -directory \"{dacDir}\"");
         }
 
-        if (Environment.GetEnvironmentVariable("SOSHARNESS_USECDAC") is { Length: > 0 } useCDac)
-        {
-            Run($"runtimes --usecdac {useCDac}");
-        }
+        // Select the DAC for this config's Dac axis (Legacy => false, CDac on .NET 11+ => true). The
+        // SOSHARNESS_USECDAC clamp (off by default; never in CI) overrides it on a skewed dev box.
+        Run($"runtimes --usecdac {DacPolicy.UseCDac(_dac)}");
     }
 
     /// <summary>

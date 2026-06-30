@@ -18,7 +18,7 @@ namespace SOS.TestHarness;
 /// </summary>
 public static class Targets
 {
-    private static readonly ConcurrentDictionary<(Host Host, string Target, string Stop, Flavor Flavor, GcType GcType, DumpKind DumpKind, bool PublicSymbols), Lazy<DumpSession>> s_sessions = new();
+    private static readonly ConcurrentDictionary<(Host Host, string Target, string Stop, Flavor Flavor, GcType GcType, DumpKind DumpKind, bool PublicSymbols, CoreVersion CoreVersion, Dac Dac), Lazy<DumpSession>> s_sessions = new();
     private static readonly ConcurrentBag<DumpSession> s_created = new();
 
     static Targets()
@@ -58,8 +58,8 @@ public static class Targets
             }
 
             return Task.Run<Target>(() => {
-                string exe = SnapshotStore.TargetExe(config.Flavor, config.Target);
-                return new LiveTarget(config.Host, definition, config.Flavor, exe);
+                string exe = SnapshotStore.TargetExe(config.Flavor, config.Target, config.CoreVersion);
+                return new LiveTarget(config.Host, definition, config.Flavor, exe, config.CoreVersion, config.Dac);
             });
         }
 
@@ -75,15 +75,15 @@ public static class Targets
     internal static DumpSession ResolveSession(TestConfig config, string stop)
     {
         return s_sessions
-            .GetOrAdd((config.Host, config.Target, stop, config.Flavor, config.GcType, config.DumpKind, config.PublicSymbols),
+            .GetOrAdd((config.Host, config.Target, stop, config.Flavor, config.GcType, config.DumpKind, config.PublicSymbols, config.CoreVersion, config.Dac),
                 key => new Lazy<DumpSession>(() => CreateSession(key)))
             .Value;
     }
 
-    private static DumpSession CreateSession((Host Host, string Target, string Stop, Flavor Flavor, GcType GcType, DumpKind DumpKind, bool PublicSymbols) key)
+    private static DumpSession CreateSession((Host Host, string Target, string Stop, Flavor Flavor, GcType GcType, DumpKind DumpKind, bool PublicSymbols, CoreVersion CoreVersion, Dac Dac) key)
     {
-        string dump = SnapshotStore.GetDump(key.Flavor, key.Target, key.Stop, key.GcType, key.DumpKind);
-        DumpSession session = new(key.Host, key.Target, key.Stop, key.Flavor, dump, key.PublicSymbols);
+        string dump = SnapshotStore.GetDump(key.Flavor, key.Target, key.Stop, key.GcType, key.DumpKind, key.CoreVersion);
+        DumpSession session = new(key.Host, key.Target, key.Stop, key.Flavor, dump, key.PublicSymbols, key.CoreVersion, key.Dac);
         s_created.Add(session);
         return session;
     }

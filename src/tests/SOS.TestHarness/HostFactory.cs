@@ -8,21 +8,21 @@ internal static class HostFactory
 {
     /// <summary>A dump-backed host (shared, read-only). <paramref name="publicSymbols"/> opts a cdb host
     /// into the sealed public-msdl symbol path for OS-symbol-dependent commands (e.g. <c>!maddress</c>).</summary>
-    public static IDebuggerHost CreateDumpHost(Host host, Flavor flavor, string dumpPath, bool publicSymbols = false) => host switch
+    public static IDebuggerHost CreateDumpHost(Host host, Flavor flavor, string dumpPath, bool publicSymbols = false, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10, string? targetExe = null) => host switch
     {
         // cdb runs dbgeng in a CHILD process (EngineHost), so the test host never loads dbgeng.
-        Host.Cdb => ChildEngineClient.ForDump(host.ToString().ToLowerInvariant(), dumpPath, DacDirFor(flavor), publicSymbols),
-        Host.DotnetDump => new DotNetDumpHost(dumpPath, flavor),
-        Host.Lldb => new LldbCliHost(dumpPath, flavor),
+        Host.Cdb => ChildEngineClient.ForDump(host.ToString().ToLowerInvariant(), dumpPath, DacDirFor(flavor, coreVersion), publicSymbols, dac),
+        Host.DotnetDump => new DotNetDumpHost(dumpPath, flavor, dac, coreVersion),
+        Host.Lldb => new LldbCliHost(dumpPath, flavor, dac, coreVersion, targetExe),
         _ => throw new ArgumentException($"Unknown host '{host}'."),
     };
 
     /// <summary>A live host (exclusive, advancing). On Windows this is the in-process dbgeng engine driven
     /// through a child EngineHost process; on Linux/macOS it drives the lldb CLI directly.</summary>
-    public static ILiveDebuggerHost CreateLiveHost(Host host, Flavor flavor, string exePath) => host switch
+    public static ILiveDebuggerHost CreateLiveHost(Host host, Flavor flavor, string exePath, CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy) => host switch
     {
-        Host.Cdb => ChildEngineClient.ForLive(host.ToString().ToLowerInvariant(), exePath, DacDirFor(flavor)),
-        Host.Lldb => new LldbLiveHost(exePath, flavor),
+        Host.Cdb => ChildEngineClient.ForLive(host.ToString().ToLowerInvariant(), exePath, DacDirFor(flavor, coreVersion), dac),
+        Host.Lldb => new LldbLiveHost(exePath, flavor, coreVersion, dac),
         Host.DotnetDump => throw new ArgumentException("dotnet-dump is post-mortem only; it has no live host."),
         _ => throw new ArgumentException($"Unknown live host '{host}'."),
     };
@@ -30,8 +30,9 @@ internal static class HostFactory
     /// <summary>
     /// The DAC directory to make dbgeng load explicitly for a flavor. Self-contained single-file bundles
     /// the runtime, so cdb can't find <c>mscordaccore.dll</c> on disk — point it at the runtime pack's
-    /// DAC. Other flavors find their DAC next to the runtime, so they need no override.
+    /// DAC for the published version. Other flavors find their DAC next to the runtime, so they need no
+    /// override.
     /// </summary>
-    private static string? DacDirFor(Flavor flavor) =>
-        flavor == Flavor.SingleFile ? ToolPaths.SingleFileDacDirectory : null;
+    private static string? DacDirFor(Flavor flavor, CoreVersion coreVersion) =>
+        flavor == Flavor.SingleFile ? ToolPaths.SingleFileDacDirectory(coreVersion) : null;
 }

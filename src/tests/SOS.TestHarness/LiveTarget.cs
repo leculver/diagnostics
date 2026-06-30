@@ -26,11 +26,12 @@ public sealed class LiveTarget : Target
     private string? _at; // current stop name, CrashMarker, or null (still at the initial break)
     private bool _disposed;
 
-    internal LiveTarget(Host hostKind, TargetDefinition definition, Flavor flavor, string exePath)
+    internal LiveTarget(Host hostKind, TargetDefinition definition, Flavor flavor, string exePath,
+                        CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
         : base(hostKind, definition.Name, flavor)
     {
         _definition = definition;
-        _host = HostFactory.CreateLiveHost(hostKind, flavor, exePath);
+        _host = HostFactory.CreateLiveHost(hostKind, flavor, exePath, coreVersion, dac);
     }
 
     protected override void GoToStopPointCore(string stopName)

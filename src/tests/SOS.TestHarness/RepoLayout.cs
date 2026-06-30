@@ -61,9 +61,18 @@ public static class RepoLayout
     public static string DebuggeeProject(string name) =>
         Path.Combine(Root, "src", "tests", "SOS.UnitTests", "Debuggees", name, name + ".csproj");
 
-    /// <summary>The pre-built Core (net10.0) output directory for a debuggee, as produced by Debuggees.proj.</summary>
-    public static string CoreDebuggeeDir(string name) =>
-        Path.Combine(ArtifactsBin, name, ArtifactsConfiguration, "net10.0");
+    /// <summary>The pre-built Core output directory for a debuggee and target framework (e.g.
+    /// <c>net8.0</c>/<c>net11.0</c>), as produced by Debuggees.proj.</summary>
+    public static string CoreDebuggeeDir(string name, string tfm) =>
+        Path.Combine(ArtifactsBin, name, ArtifactsConfiguration, tfm);
+
+    /// <summary>
+    /// The repo's locally-acquired multi-version test .NET install (<c>artifacts/dotnet-test</c>), which
+    /// <c>eng/InstallRuntimes.proj</c> populates with every <c>RuntimeTestVersions</c> runtime (8/9/10/11).
+    /// Used as <c>DOTNET_ROOT</c> when launching a debuggee so its apphost resolves the matching runtime
+    /// version (the repo's <c>.dotnet</c> only carries the build SDK's runtime).
+    /// </summary>
+    public static string DotnetTestRoot { get; } = Path.Combine(Root, "artifacts", "dotnet-test");
 
     /// <summary>Scratch directory for harness-produced artifacts (on-the-fly builds, captured dumps).</summary>
     public static string Scratch { get; } =
