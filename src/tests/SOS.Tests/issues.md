@@ -257,3 +257,24 @@ decode. Affects both DACs.
 follow-up; baselined for now.
 
 **Test handling:** skipped via `KnownIssues.SkipThreadStateNet11`.
+
+## cdac-net11-lldb-hostcrash (intermittent — observed, NOT baselined)
+
+**Configuration:** `Lldb/Core/net11/Dump/Workstation/Full/cdac` — the lldb host + cDAC, net11 dump.
+
+**Symptom:** very rarely, the single lldb child process that backs this per-config host dies mid-session,
+after which every remaining test sharing that host fails instantly (<1 ms) with
+`System.IO.IOException : Pipe is broken` at `LldbHostBase.Run`. Because all tests for a config share one
+long-lived host, one native crash cascades into a large block of fast failures (47 in a full pass, fewer if
+the crash lands later in the run).
+
+**Frequency:** observed once in 12 consecutive full soak passes (~26k test-executions). A targeted isolated
+re-run of exactly this config (`SOSHARNESS_ONLY_COREVERSIONS=Net11 _HOSTS=Lldb _DAC=CDac _LIVENESS=Dump`)
+did **not** reproduce it — the only "failures" there were harmless `No data found` env-filter artifacts.
+
+**Root cause / status:** an intermittent native crash on the cDAC/lldb net11 path (cDAC is a dotnet/runtime
+component, so the underlying defect is out of scope for the harness). Because it is net11 and not
+reproducible, it is **not** hard-skipped — doing so would forfeit the ~11/12 passing coverage this config
+normally provides. Tracked here for the morning. Two follow-ups to weigh: (a) make the harness resilient by
+restarting a dead per-config host and retrying the in-flight command instead of cascading `Pipe is broken`;
+(b) capture the lldb/cdac crash (core or stderr) to pin the runtime-side defect.
