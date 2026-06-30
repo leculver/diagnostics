@@ -17,6 +17,11 @@ public sealed class DiagnosticCommandTests
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
+    // clrma drives the native CLRMA provider, which is only surfaced by the dbgeng (cdb) and managed
+    // (dotnet-dump) hosts. The lldb SOS plugin never registered it (true of the legacy suite too — clrma
+    // ran only under the dotnet-dump host there), so lldb is excluded from the matrix rather than skipped.
+    public static TheoryData<TestConfig> ClrmaMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb | Host.DotnetDump);
+
     [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpGcData_ReportsGcStatistics(TestConfig config)
@@ -71,13 +76,11 @@ public sealed class DiagnosticCommandTests
     }
 
     [SosTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(ClrmaMatrix))]
     public async Task Clrma_DrivesManagedAnalysis(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
-
-        KnownIssues.SkipClrmaOnLldb(config.Host);
 
         // clrma drives the CLRMA provider (used by Watson / !analyze) and prints the managed thread analysis.
         SosOutput clrma = target.Sos("clrma");

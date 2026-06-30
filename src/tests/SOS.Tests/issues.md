@@ -78,19 +78,22 @@ host/flavor); nothing is skipped.
 
 ## clrma-lldb
 
-**Configuration:** `!clrma` under the **lldb** host (any flavor).
+**Configuration:** `!clrma` is exercised only under the **cdb** and **dotnet-dump** hosts, never **lldb**.
 
 `clrma` drives the native CLRMA managed-analysis provider (the path Watson / `!analyze` uses). The provider
 is surfaced as a command by the dbgeng (cdb) host and by the managed dotnet-dump host, but the lldb SOS
-plugin (`src/SOS/lldbplugin/soscommand.cpp`) does not register it, so `sos clrma` is reported as
-`Unrecognized SOS command 'clrma'`.
+plugin (`src/SOS/lldbplugin/soscommand.cpp`) does not register it, so `sos clrma` would report
+`Unrecognized SOS command 'clrma'`. This matches the legacy SOS.UnitTests suite, where `clrma` ran only
+inside an `IFDEF:DOTNETDUMP` block (`Scripts/NestedExceptionTest.script`, added by #5865) — i.e. only via
+the dotnet-dump host, never under lldb on any platform.
 
 **Root cause / status:** Host capability gap, not a harness bug. The lldb plugin exposes a curated command
 set and omits `clrma`; the underlying native entry point is dbgeng/managed-host oriented. Wiring `clrma`
-into the lldb plugin is a separate SOS feature change.
+into the lldb plugin would be a separate SOS feature change.
 
-**Test handling:** `DiagnosticCommandTests.Clrma_DrivesManagedAnalysis` runs in full on cdb and dotnet-dump;
-`KnownIssues.SkipClrmaOnLldb` skips it on the lldb host.
+**Test handling:** `DiagnosticCommandTests.Clrma_DrivesManagedAnalysis` sources its matrix from
+`ClrmaMatrix` (`Host.Cdb | Host.DotnetDump`), so lldb rows are never generated — the test runs in full on
+cdb (Windows) and dotnet-dump (all platforms) and does not appear as a skip on the lldb host.
 
 ## gchandleleaks-windows-only
 

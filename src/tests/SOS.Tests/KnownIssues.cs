@@ -42,15 +42,6 @@ internal static class KnownIssues
             "live gen-promotion bpmd + GC.Collect(2) crashes the debuggee under dbgeng; see issues.md#gcwhere-live-gc");
 
     /// <summary>
-    /// <c>clrma</c> drives the native CLRMA managed-analysis provider, which is only surfaced by the dbgeng
-    /// (cdb) and managed (dotnet-dump) hosts. The lldb SOS plugin does not expose it, so <c>sos clrma</c>
-    /// comes back as an unrecognized command. See issues.md#clrma-lldb.
-    /// </summary>
-    public static void SkipClrmaOnLldb(Host host) =>
-        Assert.SkipWhen(host == Host.Lldb,
-            "clrma is not surfaced by the lldb SOS plugin; see issues.md#clrma-lldb");
-
-    /// <summary>
     /// <c>gchandleleaks</c> is a Windows-only SOS command (gated <c>#ifndef FEATURE_PAL</c>, registered only
     /// by WindowsSOSCommand and absent from the Unix SOS exports), so it is unavailable on every non-Windows
     /// host (lldb and dotnet-dump alike). See issues.md#gchandleleaks-windows-only.
