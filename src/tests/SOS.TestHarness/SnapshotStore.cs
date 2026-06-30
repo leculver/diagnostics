@@ -318,7 +318,7 @@ public static class SnapshotStore
         {
             if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
             {
-                RunToCompletion(RepoLayout.DotNetExe,
+                RunToCompletion(RepoLayout.DotnetTestExe,
                     $"build \"{project}\" -p:BuildProjectFramework={tfm} -c {RepoLayout.ArtifactsConfiguration}");
             }
         }
@@ -369,7 +369,7 @@ public static class SnapshotStore
         {
             if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
             {
-                RunToCompletion(RepoLayout.DotNetExe, args);
+                RunToCompletion(RepoLayout.DotnetTestExe, args);
             }
         }
 

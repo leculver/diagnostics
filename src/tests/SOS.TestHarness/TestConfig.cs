@@ -238,17 +238,6 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
             return false;
         }
 
-        // A self-contained single-file net11 debuggee can't be produced by the in-repo SDK: the on-demand
-        // `dotnet publish -r <rid> --self-contained -p:PublishSingleFile=true` against net11.0 fails with
-        // NETSDK1045 ("the current 10.0.x SDK does not support targeting .NET 11.0"). The framework-dependent
-        // Core net11 debuggees are prebuilt by the repo build and are unaffected, so only the SingleFile
-        // flavor is gated. Re-enable once net11 single-file debuggees are prebuilt (a net11 SDK is needed).
-        // See issues.md#singlefile-net11-sdk.
-        if (c.Flavor == Flavor.SingleFile && c.CoreVersion == CoreVersion.Net11)
-        {
-            return false;
-        }
-
         return true;
     }
 

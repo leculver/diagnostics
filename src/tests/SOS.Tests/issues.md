@@ -178,27 +178,32 @@ entry points (`GoToStopPointCore` → `RunToBpmd`, and `RunToBreakpoint`), so ev
 as skipped. Live single-file tests that do **not** depend on bpmd (e.g. run-to-crash) are unaffected and
 continue to run.
 
-## singlefile-net11-sdk
+## singlefile-net11-sdk (resolved — on-demand debuggee builds now use the test SDK)
 
 **Configuration:** every **SingleFile** + **net11** row (all hosts, all tests).
 
-A self-contained single-file net11 debuggee cannot be produced in this repo's environment. The harness
-publishes single-file debuggees on demand with
-`dotnet publish -r <rid> --self-contained true -p:PublishSingleFile=true -p:BuildProjectFramework=net11.0`,
-and the in-repo SDK (`.dotnet`, currently 10.0.x) refuses to target net11:
+**Symptom (as originally seen):** the on-demand single-file publish
+(`dotnet publish -r <rid> --self-contained true -p:PublishSingleFile=true -p:BuildProjectFramework=net11.0`)
+failed with `error NETSDK1045: The current .NET SDK does not support targeting .NET 11.0.`
 
-```
-error NETSDK1045: The current .NET SDK does not support targeting .NET 11.0.
-```
+**Root cause / status: the harness shelled the on-demand debuggee build/publish through the wrong SDK.**
+`SnapshotStore` invoked `RepoLayout.DotNetExe` — the repo's `.dotnet` build SDK (10.0.x), used to build the
+shipping diagnostics tools per `global.json` — which cannot target net11. The repo *does* carry a
+net11-capable SDK: the **test SDK** at `artifacts/dotnet-test/sdk/11.0.100-preview.*`, which `Debuggees.proj`
+already uses to pre-build the framework-dependent debuggees ("built using the test SDK from
+artifacts/dotnet-test/"). The framework-dependent Core net11 debuggees worked only because they were
+pre-built by that test SDK; the on-demand Core build fallback had the same latent bug.
 
-The framework-dependent **Core** net11 debuggees are unaffected because they are prebuilt by the repo build
-(Debuggees.proj multi-TFM, using the net11 targeting/runtime packs), not published on demand.
+**Fix:** on-demand debuggee builds and publishes (`SnapshotStore.AcquireCore` / `BuildFlavor`, both Framework
+and SingleFile) now shell through `RepoLayout.DotnetTestExe` (`artifacts/dotnet-test/dotnet`) — the same
+net11-capable SDK the prebuild uses — instead of the product-build `.dotnet`. The two SDKs are intentionally
+separate (`.dotnet` builds the tools; `dotnet-test` tracks the net11 preview runtime/SDK for debuggees), so
+debuggee acquisition must use the latter. Harness-infra subprocess builds (EngineHost/Capturer, net10.0) and
+the dotnet-dump self-collect host stay on `.dotnet`.
 
-**Root cause / status:** Environment/build limitation, not a SOS bug. Fixing it requires either a net11 SDK
-or prebuilding net11 single-file debuggees during the repo build (the morning follow-up).
-
-**Test handling:** the `(SingleFile, net11)` combination is pruned in `TestConfig.IsValid`, so those rows are
-never generated. Remove that gate once net11 single-file debuggees can be produced.
+**Test handling:** **resolved — the `(SingleFile, net11)` prune in `TestConfig.IsValid` is removed.** net11
+single-file debuggees publish on demand (a ~72 MB self-contained bundle) and the SingleFile/net11 rows pass
+(legacy + cDAC). net8/9/10 SingleFile are unaffected by the SDK switch.
 
 ## cdac-net11-stackwalk (resolved — spurious; stale dev-box cDAC artifact)
 

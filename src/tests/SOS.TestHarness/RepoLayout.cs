@@ -74,6 +74,12 @@ public static class RepoLayout
     /// </summary>
     public static string DotnetTestRoot { get; } = Path.Combine(Root, "artifacts", "dotnet-test");
 
+    /// <summary>The multi-version test .NET host (<c>artifacts/dotnet-test/dotnet[.exe]</c>). This is the
+    /// net11-capable SDK that <c>Debuggees.proj</c> uses to pre-build the debuggees, so on-demand debuggee
+    /// builds/publishes must use it too — the repo's <c>.dotnet</c> build SDK (e.g. 10.0.x) refuses to
+    /// target newer frameworks (<c>NETSDK1045</c>).</summary>
+    public static string DotnetTestExe => Path.Combine(DotnetTestRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+
     /// <summary>Scratch directory for harness-produced artifacts (on-the-fly builds, captured dumps).</summary>
     public static string Scratch { get; } =
         Path.Combine(Root, "artifacts", "tmp", "sos-harness", ArtifactsConfiguration);
