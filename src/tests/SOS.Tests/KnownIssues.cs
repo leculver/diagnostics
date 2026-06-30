@@ -23,15 +23,6 @@ namespace SOS.Tests;
 internal static class KnownIssues
 {
     /// <summary>
-    /// ICorDebug cannot retrieve local variables from a single-file bundle — they come back as
-    /// anonymous <c>local_N</c> errors. Parameters still resolve, so only the locals assertions skip.
-    /// See issues.md#clrstack-i-singlefile.
-    /// </summary>
-    public static void SkipIcorDebugLocalsOnSingleFile(Flavor flavor) =>
-        Assert.SkipWhen(flavor == Flavor.SingleFile,
-            "ICorDebug cannot retrieve locals on single-file; see issues.md#clrstack-i-singlefile");
-
-    /// <summary>
     /// <c>enummem</c> (the ICLRDataEnumMemoryRegions test command) is not surfaced by the lldb SOS plugin and
     /// comes back as an unrecognized command there; it runs on the dbgeng and dotnet-dump hosts. See
     /// issues.md#enummem-lldb.

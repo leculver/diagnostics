@@ -39,28 +39,29 @@ property: managed frames are always preserved (every plain managed frame IP appe
 assembly-qualified; under cdb `-f` additionally contains real native-runtime frames and is strictly larger
 than plain `clrstack`, while under dotnet-dump it contains none.
 
-## clrstack-i-singlefile
+## clrstack-i-singlefile (resolved)
 
-**Configuration:** `!clrstack -i` / `-i -a` (ICorDebug) on a **SingleFile** target stopped at a managed
-marker method — observed at the Scenarios `argslocals` stop. Crash targets (e.g. DivZero) are unaffected
-and walk fully on single-file.
+**Configuration:** `!clrstack -i` / `-i -a` (ICorDebug) on a **SingleFile** target stopped at the Scenarios
+`argslocals` marker.
 
-Two related ICorDebug-on-single-file problems at a marker stop:
-1. **Truncated leaf frames.** The stackwalk hits a `[JIT Compilation: <addr>]` pseudo-frame near the top
-   and drops the frames above the first fully-JIT'd user method — so the marker method (`AtArgsLocals`) and
-   the frames above it are missing. `SosHarnessScenarios.ArgsLocalsMethod` and `…Main` are still present.
-2. **No local variables.** Even on frames that are present, locals can't be retrieved from the
-   self-contained bundle: every local comes back as `(Error 0x80004005 retrieving local variable
-   'local_N')`. Parameters resolve fine (`int number = 42`, `ArgUniqueMarker arg @ 0x…`).
+This was previously baselined as two ICorDebug-on-single-file defects (truncated leaf frames, and locals
+coming back as `(Error 0x80004005 retrieving local variable 'local_N')`). **Neither reproduces.** With the
+debuggees published by the net11 test SDK (see singlefile-net11-sdk), single-file ICorDebug behaves exactly
+like Core/Framework on every version (net8–net11): the `AtArgsLocals` marker leaf frame is present, and the
+`ArgsLocalsMethod` frame resolves named locals with decoded values (`int localInt = 99`,
+`LocalUniqueMarker localObj @ 0x…`).
 
-**Root cause / status:** Limitations of the experimental ICorDebug (`-i`) path reading IL/local metadata
-and unwinding through JIT-compilation frames in a single-file bundle. Product-side, not a harness issue.
+**Root cause of the original symptom:** the user assembly carries an **embedded portable PDB**
+(`DebugType=embedded`, the repo default). The embedded PDB lives inside `SosHarnessScenarios.dll`, which is
+bundled into the single-file exe and captured in the dump's memory image, so ICorDebug reads local names and
+scopes normally. The earlier failure was an artifact of publishing single-file with the wrong product SDK
+(`.dotnet`) rather than an ICorDebug or PDB-location limitation. The residual `(Error … 'local_N')` lines
+are compiler-generated temporaries (unnamed in the PDB), not the user-named locals — they appear on Core and
+Framework too and are never asserted.
 
-**Test handling:** `ClrStackICorDebugTests.ClrStack_ICorDebug` asserts everything that works on single-file
-(managed frames produced; the reliable methods `ArgsLocalsMethod`/`Main` appear; parameter values resolve,
-including the dumpheap object oracle for `arg`), then `KnownIssues.SkipIcorDebugLocalsOnSingleFile` skips the
-local-variable assertions for SingleFile. The marker leaf frame (`AtArgsLocals`) is only required on Core and
-Framework. DivZero is asserted in full on every flavor.
+**Test handling:** `ClrStackICorDebugTests.ClrStack_ICorDebug` asserts the full set on every flavor —
+`AtArgsLocals` is required for Scenarios regardless of flavor, and `localInt`/`localObj` values + the
+`!dumpheap` object oracle are checked for SingleFile just like Core/Framework. No skip remains.
 
 ## dumpheap-min-max-decimal
 

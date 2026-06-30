@@ -36,33 +36,30 @@ public sealed class ClrStackICorDebugTests
         // Basic -i: the expected managed methods are present as [DEFAULT] frames.
         IReadOnlyList<TargetExtensions.IcorFrame> frames = target.ClrstackICorDebug(variables: false);
         Assert.Contains(frames, f => f.IsManaged);
-        foreach (string method in ExpectedMethods(config.Target, config.Flavor))
+        foreach (string method in ExpectedMethods(config.Target))
             Assert.Contains(frames, f => f.IsManaged && f.CallSite.Contains(method, StringComparison.Ordinal));
 
         // -i -a: same frames, now with parameters and locals decoded.
         IReadOnlyList<TargetExtensions.IcorFrame> withVars = target.ClrstackICorDebug(variables: true);
-        foreach (string method in ExpectedMethods(config.Target, config.Flavor))
+        foreach (string method in ExpectedMethods(config.Target))
             Assert.Contains(withVars, f => f.IsManaged && f.CallSite.Contains(method, StringComparison.Ordinal));
 
         if (config.Target == TargetCatalog.Scenarios)
-            AssertArgsLocalsVariables(target, withVars, config.Flavor);
+            AssertArgsLocalsVariables(target, withVars);
     }
 
-    private static void AssertArgsLocalsVariables(Target target, IReadOnlyList<TargetExtensions.IcorFrame> frames, Flavor flavor)
+    private static void AssertArgsLocalsVariables(Target target, IReadOnlyList<TargetExtensions.IcorFrame> frames)
     {
         TargetExtensions.IcorFrame method = Assert.Single(frames, f => f.IsManaged && f.CallSite.Contains("SosHarnessScenarios.ArgsLocalsMethod", StringComparison.Ordinal));
 
-        // Parameters resolve on every flavor. ICorDebug recovers names and decodes primitive values
-        // (in decimal); object parameters print as "@ 0x<addr>", and that address is the very object
+        // ICorDebug recovers parameter and local names and decodes primitive values (in decimal) on every
+        // flavor, single-file included — the user assembly's embedded portable PDB travels inside the bundle
+        // and is read from the dump. Object values print as "@ 0x<addr>", and that address is the very object
         // !dumpheap reports for the uniquely-named type.
         Assert.Equal("42", Param(method, "number").Value);
         TargetExtensions.IcorVar arg = Param(method, "arg");
         Assert.True(arg.HasAddress);
         Assert.Equal(target.FindUniqueObject("ArgUniqueMarker"), arg.Address);
-
-        // ICorDebug fails to retrieve local variables from a single-file bundle (they come back as
-        // anonymous "local_N" errors); see KnownIssues / issues.md#clrstack-i-singlefile.
-        KnownIssues.SkipIcorDebugLocalsOnSingleFile(flavor);
 
         Assert.Equal("99", Local(method, "localInt").Value);
         TargetExtensions.IcorVar localObj = Local(method, "localObj");
@@ -70,13 +67,10 @@ public sealed class ClrStackICorDebugTests
         Assert.Equal(target.FindUniqueObject("LocalUniqueMarker"), localObj.Address);
     }
 
-    // The methods we require on each target's ICorDebug stack. On single-file the marker leaf frame
-    // (AtArgsLocals) is unreliable — ICorDebug truncates at a [JIT Compilation] frame — so it's only
-    // required on Core/Framework (see issues.md#clrstack-i-singlefile).
-    private static IReadOnlyList<string> ExpectedMethods(string target, Flavor flavor) => target switch
+    // The methods we require on each target's ICorDebug stack.
+    private static IReadOnlyList<string> ExpectedMethods(string target) => target switch
     {
         TargetCatalog.DivZero => ["C.DivideByZero", "C.F3", "C.F2", "C.Main"],
-        TargetCatalog.Scenarios when flavor == Flavor.SingleFile => ["SosHarnessScenarios.ArgsLocalsMethod", "SosHarnessScenarios.Main"],
         TargetCatalog.Scenarios => ["SosHarnessScenarios.ArgsLocalsMethod", "SosHarnessScenarios.AtArgsLocals", "SosHarnessScenarios.Main"],
         _ => throw new ArgumentOutOfRangeException(nameof(target)),
     };
