@@ -32,6 +32,15 @@ public abstract class LldbHostBase : IDebuggerHost
     public abstract string Name { get; }
 
     /// <summary>
+    /// How long to wait for a single command's output before declaring lldb wedged. Dump hosts answer from
+    /// a static core and are uniformly fast, so the default is tight. The live host overrides this higher:
+    /// its <c>process continue</c> must let the debuggee actually run to a managed stop point, which under a
+    /// saturated full-matrix run can be briefly CPU-starved and legitimately slow (observed ~2 min), so a
+    /// tight timeout would flake on contention rather than catch a real wedge.
+    /// </summary>
+    protected virtual TimeSpan CommandTimeout => TimeSpan.FromSeconds(120);
+
+    /// <summary>
     /// Spawn lldb, import the command helper, and drain the startup banner so the host is ready for
     /// commands. Derived constructors call this first, then create/advance their target.
     /// <paramref name="configure"/> runs against the <see cref="ProcessStartInfo"/> before launch (e.g. to
@@ -83,7 +92,7 @@ public abstract class LldbHostBase : IDebuggerHost
         _reader.Start();
 
         // Drain the startup banner up to the marker the helper prints from __lldb_init_module.
-        DrainToMarker(TimeSpan.FromSeconds(120));
+        DrainToMarker(CommandTimeout);
     }
 
     public abstract void LoadSos();
@@ -99,7 +108,7 @@ public abstract class LldbHostBase : IDebuggerHost
     {
         _stdin.WriteLine("runcommand " + command);
         _stdin.Flush();
-        string outp = DrainToMarker(TimeSpan.FromSeconds(120), command);
+        string outp = DrainToMarker(CommandTimeout, command);
         if (s_trace is { Length: > 0 })
         {
             File.AppendAllText(s_trace,

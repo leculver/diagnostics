@@ -26,6 +26,15 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
 
     public override string Name => "lldb-live";
 
+    // Live navigation resumes the debuggee and waits for it to reach a managed stop point; under a
+    // saturated full-matrix run that can be briefly CPU-starved and take ~2 min, so give it more headroom
+    // than the (uniformly fast) dump hosts to avoid flaking on contention. Override with SOSHARNESS_LIVE_TIMEOUT
+    // (seconds).
+    protected override TimeSpan CommandTimeout { get; } =
+        int.TryParse(Environment.GetEnvironmentVariable("SOSHARNESS_LIVE_TIMEOUT"), out int s) && s > 0
+            ? TimeSpan.FromSeconds(s)
+            : TimeSpan.FromSeconds(300);
+
     public LldbLiveHost(string exePath, Flavor flavor, CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
     {
         _flavor = flavor;
