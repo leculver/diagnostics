@@ -29,6 +29,7 @@ public sealed class ClrStackFullTests
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_Full(TestConfig config)
     {
+        KnownIssues.SkipCDacNet11StackwalkOnDotnetDump(config);
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 

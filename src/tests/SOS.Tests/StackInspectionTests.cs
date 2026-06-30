@@ -44,6 +44,7 @@ public sealed class StackInspectionTests
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task ParallelStacks_GroupsThreadsByCallStack(TestConfig config)
     {
+        KnownIssues.SkipCDacNet11StackwalkOnDotnetDump(config);
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopArgsLocals);
 

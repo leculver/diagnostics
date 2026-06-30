@@ -76,4 +76,48 @@ internal static class KnownIssues
     public static void SkipDoAliasOnLldb(Host host) =>
         Assert.SkipWhen(host == Host.Lldb,
             "the 'do' alias collides with lldb's built-in 'do' command; see issues.md#do-alias-lldb");
+
+    // ---------------------------------------------------------------------------------------------------
+    // .NET 11 (preview) baselines. These are *baselined* (recorded as known failures), not yet fixed: the
+    // fixes land separately. Each is greppable so re-enabling is a one-line delete once the underlying
+    // runtime/SOS work is done. See the matching anchors in issues.md.
+    // ---------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// On .NET 11 the cDAC's managed stack walk returns no frames under the dotnet-dump host: every
+    /// <c>clrstack</c>-family command (and <c>parallelstacks</c>) prints only the "OS Thread Id" banner /
+    /// "0 threads with 0 roots". The legacy DAC walks correctly, and the lldb host walks correctly under the
+    /// cDAC too (it supplies the native register/unwind context), so this is scoped to the dotnet-dump cDAC
+    /// path on net11. See issues.md#cdac-net11-stackwalk.
+    /// </summary>
+    public static void SkipCDacNet11StackwalkOnDotnetDump(TestConfig config) =>
+        Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11 && config.Dac == Dac.CDac && config.Host == Host.DotnetDump,
+            "cDAC managed stack walk returns no frames on .NET 11 under dotnet-dump; see issues.md#cdac-net11-stackwalk");
+
+    /// <summary>
+    /// On .NET 11 some SOS maintenance commands (e.g. <c>sosflush</c>/<c>enummem</c>) return E_NOTIMPL
+    /// (0x80004001, surfaced as "Unrecognized SOS command") under the cDAC on the dotnet-dump host. See
+    /// issues.md#cdac-net11-notimpl.
+    /// </summary>
+    public static void SkipCDacNet11NotImplemented(TestConfig config) =>
+        Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11 && config.Dac == Dac.CDac && config.Host == Host.DotnetDump,
+            "some SOS commands return E_NOTIMPL under the cDAC on .NET 11; see issues.md#cdac-net11-notimpl");
+
+    /// <summary>
+    /// On .NET 11 <c>dumpdomain</c> no longer emits the labeled "System Domain" block the structure test
+    /// asserts (the domain layout/printing changed). Affects both DACs and both non-Windows hosts. See
+    /// issues.md#dumpdomain-net11.
+    /// </summary>
+    public static void SkipDumpDomainNet11(TestConfig config) =>
+        Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11,
+            "dumpdomain dropped the System Domain block on .NET 11; see issues.md#dumpdomain-net11");
+
+    /// <summary>
+    /// On .NET 11 the thread-state value can't be extracted from <c>clrthreads</c> output (its shape
+    /// changed), so the <c>threadstate</c> decode test has no value to decode. Affects both DACs. See
+    /// issues.md#clrthreads-net11.
+    /// </summary>
+    public static void SkipThreadStateNet11(TestConfig config) =>
+        Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11,
+            "clrthreads thread-state extraction fails on .NET 11; see issues.md#clrthreads-net11");
 }

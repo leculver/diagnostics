@@ -53,6 +53,7 @@ public sealed class ClrStackLinesTests
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_SourceLines(TestConfig config)
     {
+        KnownIssues.SkipCDacNet11StackwalkOnDotnetDump(config);
         using Target target = await Targets.GetTargetAsync(config);
         if (config.Target == TargetCatalog.Scenarios)
         {

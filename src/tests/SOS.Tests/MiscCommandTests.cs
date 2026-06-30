@@ -26,6 +26,8 @@ public sealed class MiscCommandTests
         // dbgout toggles internal debug logging and reports the new state.
         target.Sos("dbgout").AssertContains("Debug output logging");
 
+        KnownIssues.SkipCDacNet11NotImplemented(config);
+
         // sosflush and enummem produce no output but must be recognised commands that run cleanly.
         AssertRuns(target.Sos("sosflush"));
 

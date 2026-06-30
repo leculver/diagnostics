@@ -177,3 +177,83 @@ via the dump host; only the *live* single-file navigation is unavailable on lldb
 entry points (`GoToStopPointCore` → `RunToBpmd`, and `RunToBreakpoint`), so every affected row is reported
 as skipped. Live single-file tests that do **not** depend on bpmd (e.g. run-to-crash) are unaffected and
 continue to run.
+
+## singlefile-net11-sdk
+
+**Configuration:** every **SingleFile** + **net11** row (all hosts, all tests).
+
+A self-contained single-file net11 debuggee cannot be produced in this repo's environment. The harness
+publishes single-file debuggees on demand with
+`dotnet publish -r <rid> --self-contained true -p:PublishSingleFile=true -p:BuildProjectFramework=net11.0`,
+and the in-repo SDK (`.dotnet`, currently 10.0.x) refuses to target net11:
+
+```
+error NETSDK1045: The current .NET SDK does not support targeting .NET 11.0.
+```
+
+The framework-dependent **Core** net11 debuggees are unaffected because they are prebuilt by the repo build
+(Debuggees.proj multi-TFM, using the net11 targeting/runtime packs), not published on demand.
+
+**Root cause / status:** Environment/build limitation, not a SOS bug. Fixing it requires either a net11 SDK
+or prebuilding net11 single-file debuggees during the repo build (the morning follow-up).
+
+**Test handling:** the `(SingleFile, net11)` combination is pruned in `TestConfig.IsValid`, so those rows are
+never generated. Remove that gate once net11 single-file debuggees can be produced.
+
+## cdac-net11-stackwalk
+
+**Configuration:** **net11** + **cDAC** + **dotnet-dump** host — the `clrstack`-family commands
+(`ClrStack_Registers`, `ClrStack_Full`, `ClrStack_FrameCount`, `ClrStack_ArgsLocals`, `ClrStack_AllThreads`,
+`ClrStack_SourceLines`, `ClrStack_GcRoots`, `ClrStack_GcRoots_Flags`) and `parallelstacks`
+(`ParallelStacks_GroupsThreadsByCallStack`).
+
+Under the cDAC on net11, the managed stack walk returns no frames on the dotnet-dump host. `clrstack -r`
+prints only the `OS Thread Id:` banner with no `Child SP / IP / Call Site` table; `parallelstacks` reports
+`==> 0 threads with 0 roots`.
+
+**Root cause / status:** A cDAC (managed contract DAC) defect on net11 — the runtime's DAC side, out of scope
+for the harness; baselined pending a runtime/cDAC fix. Scoped narrowly because the **legacy** DAC walks
+correctly, and the **lldb** host walks correctly even under the cDAC (it supplies the native register/unwind
+context that the dotnet-dump managed analyzer lacks), so only the dotnet-dump cDAC path is affected.
+
+**Test handling:** skipped via `KnownIssues.SkipCDacNet11StackwalkOnDotnetDump`.
+
+## cdac-net11-notimpl
+
+**Configuration:** **net11** + **cDAC** + **dotnet-dump** host — `MiscCommandTests.SessionCommands_Execute`.
+
+Some SOS maintenance commands (`sosflush` / `enummem`) return `E_NOTIMPL` (`0x80004001`, surfaced as
+`ERROR: Unrecognized SOS command`) under the cDAC on net11.
+
+**Root cause / status:** A cDAC defect on net11 (missing contract implementation), out of scope for the
+harness; baselined pending a runtime/cDAC fix.
+
+**Test handling:** skipped via `KnownIssues.SkipCDacNet11NotImplemented`.
+
+## dumpdomain-net11
+
+**Configuration:** every **net11** row of `DumpDomainTests.DumpDomain_Structure` (both DACs, both non-Windows
+hosts, dump and live).
+
+On net11 `dumpdomain` no longer emits the labeled **System Domain** block the structure test asserts; the
+output begins with unlabeled domain rows. This affects the **legacy** DAC as well as the cDAC, so it is a
+genuine output-shape change in net11, not a DAC-specific defect.
+
+**Root cause / status:** net11 `dumpdomain` output-format change. Whether the fix is in SOS (parse/print) or
+in the test's expectations is a morning follow-up; baselined for now.
+
+**Test handling:** skipped via `KnownIssues.SkipDumpDomainNet11`.
+
+## clrthreads-net11
+
+**Configuration:** every **net11** row of `MemoryAndDecodeTests.ThreadState_DecodesStateFlags` (both DACs,
+both non-Windows hosts, dump and live).
+
+The test decodes a thread-state value (`threadstate <flags>`) lifted out of `clrthreads` output. On net11 it
+can't extract a thread-state value from `clrthreads` (its column shape changed), so there is nothing to
+decode. Affects both DACs.
+
+**Root cause / status:** net11 `clrthreads` output-format change. SOS-vs-test-expectation triage is a morning
+follow-up; baselined for now.
+
+**Test handling:** skipped via `KnownIssues.SkipThreadStateNet11`.

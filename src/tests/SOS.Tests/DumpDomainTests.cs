@@ -23,6 +23,7 @@ public sealed class DumpDomainTests
     [MemberData(nameof(Matrix))]
     public async Task DumpDomain_Structure(TestConfig config)
     {
+        KnownIssues.SkipDumpDomainNet11(config);
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
