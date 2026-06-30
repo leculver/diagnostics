@@ -56,8 +56,14 @@ public sealed class ObjectInspectionTests
         Assert.Contains("ThinLockMarker..ctor", dumpMd.MethodName, StringComparison.Ordinal);
         Assert.Equal(mt, dumpMd.MethodTable);
 
-        // do is an alias for dumpobj. (Asserted last because the alias collides with lldb's built-in 'do'.)
-        KnownIssues.SkipDoAliasOnLldb(config.Host);
+        // do is an alias for dumpobj, asserted last: the alias collides with lldb's built-in 'do' command
+        // so it can't be dispatched through the lldb SOS host (see issues.md#do-alias-lldb). Return early
+        // there rather than skipping — everything above has already been verified on this config.
+        if (config.Host == Host.Lldb)
+        {
+            return;
+        }
+
         target.Sos($"do {marker:x}").AssertContains("ThinLockMarker");
     }
 

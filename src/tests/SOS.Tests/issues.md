@@ -1,7 +1,10 @@
 # SOS.Tests known issues
 
 Documented bedrock findings for the modern SOS test harness (`SOS.Tests`). Each anchor is referenced
-from a `KnownIssues` skip so the condition, the reason, and this note stay together and greppable.
+from an inline guard in the test (a small `if (…) return;` with a comment) so the condition, the reason,
+and this note stay together and greppable. Where a known-unsupported command is the *last* assertion in a
+test, the test verifies everything that works on that config and then returns early — it passes (not
+skipped) rather than discarding the assertions that already succeeded.
 
 ## gcwhere-live-gc
 
@@ -124,7 +127,7 @@ registers, so `sos enummem` is reported as `Unrecognized SOS command 'enummem'`.
 `clrma` above.
 
 **Test handling:** `MiscCommandTests.SessionCommands_Execute` asserts `dbgout` and `sosflush` on every host,
-then `KnownIssues.SkipEnumMemOnLldb` skips the trailing `enummem` assertion on the lldb host.
+then returns early before the trailing `enummem` assertion on the lldb host (passes, not skipped).
 
 ## do-alias-lldb
 
@@ -139,8 +142,8 @@ an lldb built-in. The primary `dumpobj` spelling works fully on lldb.
 unavailable on lldb.
 
 **Test handling:** `ObjectInspectionTests.DumpObj_Mt_Class_Md_Chain` exercises `dumpobj`/`dumpmt`/`dumpclass`/
-`dumpmd` in full on every host; the `do`-alias assertion is performed last and `KnownIssues.SkipDoAliasOnLldb`
-skips just that final check on the lldb host.
+`dumpmd` in full on every host; the `do`-alias assertion is performed last and the test returns early before
+it on the lldb host (passes, not skipped).
 
 ## clrstack-f-singlefile-runtime-frames
 
@@ -258,7 +261,8 @@ Some SOS maintenance commands (`sosflush` / `enummem`) return `E_NOTIMPL` (`0x80
 **Root cause / status:** A cDAC defect on net11 (missing contract implementation), out of scope for the
 harness; baselined pending a runtime/cDAC fix.
 
-**Test handling:** skipped via `KnownIssues.SkipCDacNet11NotImplemented`.
+**Test handling:** `MiscCommandTests.SessionCommands_Execute` asserts `dbgout`, then returns early before the
+`sosflush`/`enummem` assertions on net11 + cDAC + dotnet-dump (passes, not skipped), pending a runtime/cDAC fix.
 
 ## dumpdomain-net11
 
