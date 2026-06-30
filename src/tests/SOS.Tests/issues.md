@@ -235,14 +235,21 @@ harness; baselined pending a runtime/cDAC fix.
 **Configuration:** every **net11** row of `DumpDomainTests.DumpDomain_Structure` (both DACs, both non-Windows
 hosts, dump and live).
 
-On net11 `dumpdomain` no longer emits the labeled **System Domain** block the structure test asserts; the
-output begins with unlabeled domain rows. This affects the **legacy** DAC as well as the cDAC, so it is a
-genuine output-shape change in net11, not a DAC-specific defect.
+On net11 `dumpdomain` no longer emits the labeled **System Domain** block the structure test originally
+asserted; the output starts directly with the application domain rows (`Domain 1: ...`).
 
-**Root cause / status:** net11 `dumpdomain` output-format change. Whether the fix is in SOS (parse/print) or
-in the test's expectations is a morning follow-up; baselined for now.
+**Root cause (bedrock — intentional runtime change, NOT a bug):** the DAC's
+`ClrDataAccess::GetAppDomainStoreData` (`src/coreclr/debug/daccess/request.cpp`) now hardcodes
+`adsData->systemDomain = NULL` (and `sharedDomain = NULL`). There is no longer a separate System Domain
+object for SOS to print, so the `if (adsData.systemDomain != 0)` guard in SOS's `dumpdomain`
+(`src/SOS/Strike/strike.cpp`) is false and the block is omitted — by design. This affects **both** DACs
+because the cDAC mirrors the same SOS-interface contract. Modern .NET Core has a single AppDomain; the System
+Domain block is a legacy concept being phased out.
 
-**Test handling:** skipped via `KnownIssues.SkipDumpDomainNet11`.
+**Test handling:** not skipped. `DumpDomain_Structure` is version-aware — it asserts the System Domain block
+is **present** with real heap pointers on .NET Framework and .NET Core ≤ 10, and asserts it is **absent** on
+.NET Core 11+. The rest of the structure assertions (app domains, debuggee assembly/module) are unchanged and
+run on all versions.
 
 ## clrthreads-net11
 

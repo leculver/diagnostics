@@ -102,13 +102,4 @@ internal static class KnownIssues
     public static void SkipCDacNet11NotImplemented(TestConfig config) =>
         Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11 && config.Dac == Dac.CDac && config.Host == Host.DotnetDump,
             "some SOS commands return E_NOTIMPL under the cDAC on .NET 11; see issues.md#cdac-net11-notimpl");
-
-    /// <summary>
-    /// On .NET 11 <c>dumpdomain</c> no longer emits the labeled "System Domain" block the structure test
-    /// asserts (the domain layout/printing changed). Affects both DACs and both non-Windows hosts. See
-    /// issues.md#dumpdomain-net11.
-    /// </summary>
-    public static void SkipDumpDomainNet11(TestConfig config) =>
-        Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11,
-            "dumpdomain dropped the System Domain block on .NET 11; see issues.md#dumpdomain-net11");
 }

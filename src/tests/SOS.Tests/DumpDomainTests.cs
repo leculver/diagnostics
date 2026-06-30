@@ -23,18 +23,27 @@ public sealed class DumpDomainTests
     [MemberData(nameof(Matrix))]
     public async Task DumpDomain_Structure(TestConfig config)
     {
-        KnownIssues.SkipDumpDomainNet11(config);
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         DumpDomainResult domains = target.DumpDomain();
 
-        // The System Domain is always present, has no user assemblies, and its heaps are real pointers.
-        DomainInfo system = domains.SystemDomain;
-        Assert.NotEqual(0ul, system.Address);
-        Assert.NotEqual(0ul, system.LowFrequencyHeap);
-        Assert.NotEqual(0ul, system.HighFrequencyHeap);
-        Assert.NotEqual(0ul, system.StubHeap);
+        // System Domain block. .NET 11 intentionally stopped emitting it: the DAC's
+        // GetAppDomainStoreData now hardcodes systemDomain == 0 (there is no separate System Domain object
+        // to print), so dumpdomain prints nothing for it. On .NET Framework and .NET Core <= 10 the block is
+        // present with no user assemblies and real heap pointers.
+        if (config.Flavor != Flavor.Framework && config.CoreVersion >= CoreVersion.Net11)
+        {
+            Assert.DoesNotContain(domains.Domains, d => d.Kind == DomainKind.System);
+        }
+        else
+        {
+            DomainInfo system = domains.SystemDomain;
+            Assert.NotEqual(0ul, system.Address);
+            Assert.NotEqual(0ul, system.LowFrequencyHeap);
+            Assert.NotEqual(0ul, system.HighFrequencyHeap);
+            Assert.NotEqual(0ul, system.StubHeap);
+        }
 
         // There is at least one application domain, and the debuggee's own assembly + module are loaded.
         Assert.NotEmpty(domains.AppDomains);
