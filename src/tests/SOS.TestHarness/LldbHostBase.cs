@@ -41,6 +41,20 @@ public abstract class LldbHostBase : IDebuggerHost
     protected virtual TimeSpan CommandTimeout => TimeSpan.FromSeconds(120);
 
     /// <summary>
+    /// How long to wait for the heavy, contention-sensitive startup steps — spawning lldb and draining its
+    /// banner, and (for the dump host) <c>target create --core</c>. Loading a multi-hundred-MB core under a
+    /// saturated full-matrix run can take noticeably longer than a single command (observed ~93s isolated,
+    /// &gt;120s under contention), and it shares none of the wedge risk of an interactive command, so it gets
+    /// its own, looser budget. Per-command execution keeps the tighter <see cref="CommandTimeout"/> so a
+    /// genuinely wedged command still surfaces promptly. Override with <c>SOSHARNESS_LLDB_LOAD_TIMEOUT</c>
+    /// (seconds).
+    /// </summary>
+    protected virtual TimeSpan LoadTimeout { get; } =
+        int.TryParse(Environment.GetEnvironmentVariable("SOSHARNESS_LLDB_LOAD_TIMEOUT"), out int s) && s > 0
+            ? TimeSpan.FromSeconds(s)
+            : TimeSpan.FromSeconds(300);
+
+    /// <summary>
     /// Spawn lldb, import the command helper, and drain the startup banner so the host is ready for
     /// commands. Derived constructors call this first, then create/advance their target.
     /// <paramref name="configure"/> runs against the <see cref="ProcessStartInfo"/> before launch (e.g. to
@@ -92,7 +106,7 @@ public abstract class LldbHostBase : IDebuggerHost
         _reader.Start();
 
         // Drain the startup banner up to the marker the helper prints from __lldb_init_module.
-        DrainToMarker(CommandTimeout);
+        DrainToMarker(LoadTimeout);
     }
 
     public abstract void LoadSos();
@@ -104,11 +118,17 @@ public abstract class LldbHostBase : IDebuggerHost
     public SosOutput Sos(string command) => new(Name, command, Run("sos " + command));
 
     /// <summary>Send a command through the <c>runcommand</c> helper and return its output up to the sentinel.</summary>
-    protected string Run(string command)
+    protected string Run(string command) => Run(command, CommandTimeout);
+
+    /// <summary>
+    /// As <see cref="Run(string)"/>, but with an explicit timeout — used for the slow, contention-sensitive
+    /// load steps (e.g. <c>target create --core</c>) that warrant the looser <see cref="LoadTimeout"/>.
+    /// </summary>
+    protected string Run(string command, TimeSpan timeout)
     {
         _stdin.WriteLine("runcommand " + command);
         _stdin.Flush();
-        string outp = DrainToMarker(CommandTimeout, command);
+        string outp = DrainToMarker(timeout, command);
         if (s_trace is { Length: > 0 })
         {
             File.AppendAllText(s_trace,

@@ -37,7 +37,7 @@ public sealed class LldbCliHost : LldbHostBase
         string create = string.IsNullOrEmpty(targetExe)
             ? $"target create --core \"{dumpPath}\""
             : $"target create --core \"{dumpPath}\" \"{targetExe}\"";
-        Run(create);
+        Run(create, LoadTimeout);
     }
 
     public override void LoadSos()
