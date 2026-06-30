@@ -196,6 +196,17 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
             return false;
         }
 
+        // Live bpmd can't bind in a self-contained single-file image under the lldb host: CoreCLR is
+        // statically linked into the symbol-stripped app image, so lldb has no symbol on which to set the
+        // JIT/prestub notification breakpoint (.NET Core keeps CoreCLR as a distinct libcoreclr.so, so it
+        // works there). Prune the (lldb, single-file, live) row for targets navigated via a managed stop
+        // point; crash targets, which just run to the fault, keep their live single-file coverage. See
+        // issues.md#bpmd-singlefile-live-lldb.
+        if (c.IsLive && c.Host == Host.Lldb && c.Flavor == Flavor.SingleFile && TargetCatalog.NavigatesViaBpmd(c.Target))
+        {
+            return false;
+        }
+
         // The target must support the requested flavor (e.g. DynamicMethod can't build for Framework).
         if ((TargetCatalog.FlavorsFor(c.Target) & c.Flavor) == 0)
         {

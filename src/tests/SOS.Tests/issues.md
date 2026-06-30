@@ -18,17 +18,27 @@ the debuggee runs straight past every managed stop point (and, for the divzero t
 `RunToBpmd`/`RunToBreakpoint` report `Debuggee exited before hitting bpmd …`.
 
 **Root cause / status:** Not a harness bug. In a self-contained single-file publish the runtime is
-statically linked into the application executable, whose symbols are stripped, so lldb has no symbol to
-place bpmd's notification breakpoint on. The .NET Core flavor keeps CoreCLR as a distinct `libcoreclr.so`
-module, so the same notification breakpoint resolves and the identical tests pass there. The dump path
-exercises the same single-file managed state from a captured snapshot, so single-file coverage is retained
-via the dump host; only the *live* single-file navigation is unavailable on lldb.
+statically linked into the application executable, whose symbols are stripped. The lldb SOS plugin sets its
+runtime-loaded trigger with `BreakpointCreateByName("coreclr_execute_assembly", "libcoreclr.so")`
+(`src/SOS/lldbplugin/services.cpp`); in a single-file image neither the `libcoreclr.so` module nor that
+exported symbol exists, so `SetRuntimeLoadedCallback` returns `E_FAIL`, JIT notifications are never enabled,
+and bpmd never binds. (`readelf` on a published single-file exe confirms the `.dynsym` has no defined FUNC
+symbols — only `g_dacTable` survives, which is why the *dump*/DAC path still works.) The .NET Core flavor
+keeps CoreCLR as a distinct `libcoreclr.so` module exporting `coreclr_execute_assembly`, so the same
+notification breakpoint resolves and the identical tests pass there. The dump path exercises the same
+single-file managed state from a captured snapshot, so single-file coverage is retained via the dump host;
+only the *live* single-file navigation is unavailable on lldb. A genuine fix would need runtime/host-build
+cooperation (retain those exports under single-file, or expose a symbol-independent notification entrypoint
+via the DAC) — it cannot be resolved in diagnostics alone, since the symbols are simply gone from the image.
 
-**Test handling:** enforced once in the harness rather than per test — `LiveTarget` throws a dynamic skip
-(`HarnessSkipException`) for the `Host.Lldb` + `Flavor.SingleFile` combination from both live navigation
-entry points (`GoToStopPointCore` → `RunToBpmd`, and `RunToBreakpoint`), so every affected row is reported
-as skipped. Live single-file tests that do **not** depend on bpmd (e.g. run-to-crash) are unaffected and
-continue to run.
+**Test handling:** pruned centrally in the matrix rather than skipped per test. A target whose stop points
+require bpmd (a `StopKind.Snapshot`, see `TargetCatalog.NavigatesViaBpmd`) does not emit a
+`(Lldb, SingleFile, Live)` row at all (`TestConfig.IsValid`), so there is no skipped-test noise — the row
+never exists. Crash targets, which just run to the fault, keep their live single-file lldb coverage. As a
+belt-and-suspenders guard for any explicit bpmd use whose target is crash-based (e.g.
+`LiveBpmdTests.RawBpmd_BreaksOnArbitraryMethod` on the divzero target), `LiveTarget` still throws a dynamic
+skip (`HarnessSkipException`) for `Host.Lldb` + `Flavor.SingleFile` from both live navigation entry points
+(`GoToStopPointCore` → `RunToBpmd`, and `RunToBreakpoint`).
 
 ## cdac-net11-notimpl
 
