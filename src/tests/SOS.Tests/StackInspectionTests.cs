@@ -19,7 +19,7 @@ public sealed class StackInspectionTests
     public static TheoryData<TestConfig> CdbMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpStackObjects_ListsStackRoots(TestConfig config)
     {
@@ -40,7 +40,7 @@ public sealed class StackInspectionTests
         target.Sos($"dso").AssertContains("LocalUniqueMarker");
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task ParallelStacks_GroupsThreadsByCallStack(TestConfig config)
     {

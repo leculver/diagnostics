@@ -45,7 +45,7 @@ public sealed class ClrStackTests
                 TargetCatalog.Scenarios,
             ]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(RegistersMatrix))]
     public async Task ClrStack_Registers(TestConfig config)
     {
@@ -111,7 +111,7 @@ public sealed class ClrStackTests
         return data;
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(GcRootsMatrix))]
     public async Task ClrStack_GcRoots(TestConfig config, string stopName)
     {
@@ -154,7 +154,7 @@ public sealed class ClrStackTests
     // carries Pinned/Interior (defaulting to False when the flag isn't printed).
     public static TheoryData<TestConfig> GcRootsFlagMatrix { get; } = TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(GcRootsFlagMatrix))]
     public async Task ClrStack_GcRoots_Flags(TestConfig config)
     {

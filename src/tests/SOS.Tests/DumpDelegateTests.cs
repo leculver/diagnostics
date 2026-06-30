@@ -16,7 +16,7 @@ public sealed class DumpDelegateTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpDelegate_ResolvesWorkerEntry(TestConfig config)
     {

@@ -24,7 +24,7 @@ public sealed class ClrStackFrameCountTests
                 TargetCatalog.DynamicMethod,
             ]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_FrameCount(TestConfig config)
     {

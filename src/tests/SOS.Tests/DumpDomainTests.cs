@@ -19,7 +19,7 @@ public sealed class DumpDomainTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpDomain_Structure(TestConfig config)
     {
@@ -59,7 +59,7 @@ public sealed class DumpDomainTests
         }
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpDomain_AssemblyRoundTrip(TestConfig config)
     {

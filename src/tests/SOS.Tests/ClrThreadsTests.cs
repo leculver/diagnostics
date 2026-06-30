@@ -24,7 +24,7 @@ public sealed class ClrThreadsTests
     public static TheoryData<TestConfig> Matrix { get; }
                     = TestConfig.BuildMatrix([TargetCatalog.NestedException, TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrThreads_ReportsThreadCount(TestConfig config)
     {

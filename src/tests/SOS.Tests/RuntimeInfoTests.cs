@@ -19,7 +19,7 @@ public sealed class RuntimeInfoTests
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task EeVersion_ReportsRuntimeAndSosVersion(TestConfig config)
     {
@@ -31,7 +31,7 @@ public sealed class RuntimeInfoTests
         ee.AssertContains("SOS Version:");
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrModulesAndAssemblies_ListDebuggeeModule(TestConfig config)
     {
@@ -43,7 +43,7 @@ public sealed class RuntimeInfoTests
         target.Sos("assemblies").AssertContains("SosHarnessScenarios");
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task Modules_Registers_Threads_DotnetDumpOnly(TestConfig config)
     {
@@ -61,7 +61,7 @@ public sealed class RuntimeInfoTests
             $"expected multiple threads:\n{threads.Text}");
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task Runtimes_ReportsLoadedRuntime(TestConfig config)
     {
@@ -73,7 +73,7 @@ public sealed class RuntimeInfoTests
         Assert.Matches(@"\d+\.\d+\.\d+", runtimes.Text);
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpRuntimeTypes_ListsRuntimeTypeObjects(TestConfig config)
     {

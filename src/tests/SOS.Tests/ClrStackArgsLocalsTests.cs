@@ -23,7 +23,7 @@ public sealed class ClrStackArgsLocalsTests
                 TargetCatalog.Scenarios,
             ]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_ArgsLocals(TestConfig config)
     {

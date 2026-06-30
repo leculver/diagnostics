@@ -20,7 +20,7 @@ public sealed class ClrStackAllThreadsTests
 
     public static TheoryData<TestConfig> Matrix { get; } = TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_AllThreads(TestConfig config)
     {

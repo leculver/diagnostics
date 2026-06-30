@@ -25,7 +25,7 @@ public sealed class DumpModuleTests
         "SosHarnessScenarios", "ThinLockMarker", "LiveUniqueMarker", "DeadUniqueMarker",
     };
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpModule_Structure(TestConfig config)
     {
@@ -45,7 +45,7 @@ public sealed class DumpModuleTests
         Assert.True(dump.MetaData.Size > 0, $"metadata size should be positive (was {dump.MetaData.Size})");
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpModule_Types(TestConfig config)
     {

@@ -19,7 +19,7 @@ public sealed class MemoryAndDecodeTests
     public static TheoryData<TestConfig> NestedExceptionMatrix => TestConfig.BuildMatrix([TargetCatalog.NestedException]);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task MemoryDumpers_ShowKnownFieldBytes(TestConfig config)
     {
@@ -36,7 +36,7 @@ public sealed class MemoryAndDecodeTests
         target.Sos($"db {marker:x}").AssertContains(":"); // byte dump prints "<addr>: <bytes>"
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(ScenariosMatrix))]
     public async Task ThreadState_DecodesStateFlags(TestConfig config)
     {
@@ -52,7 +52,7 @@ public sealed class MemoryAndDecodeTests
         Assert.DoesNotContain("Unrecognized", decoded.Text, StringComparison.Ordinal);
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task TaskState_DecodesTaskStatus(TestConfig config)
     {
@@ -65,7 +65,7 @@ public sealed class MemoryAndDecodeTests
         target.Sos($"taskstate {task:x}").AssertContains("WaitingForActivation");
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(NestedExceptionMatrix))]
     public async Task DumpExceptions_ListsManagedExceptions(TestConfig config)
     {

@@ -16,7 +16,7 @@ public sealed class MiscCommandTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task SessionCommands_Execute(TestConfig config)
     {

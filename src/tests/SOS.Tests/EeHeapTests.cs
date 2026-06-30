@@ -16,7 +16,7 @@ public sealed class EeHeapTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task EeHeap_Structure(TestConfig config)
     {
@@ -32,7 +32,7 @@ public sealed class EeHeapTests
     public static TheoryData<TestConfig> ServerMatrix =>
         TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core, Host.AllValid, Liveness.Dump, GcType.Server);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(ServerMatrix))]
     public async Task EeHeap_ServerGc_IsMultiHeap(TestConfig config)
     {

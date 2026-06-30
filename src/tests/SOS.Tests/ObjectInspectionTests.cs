@@ -17,7 +17,7 @@ public sealed class ObjectInspectionTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpObj_Mt_Class_Md_Chain(TestConfig config)
     {
@@ -61,7 +61,7 @@ public sealed class ObjectInspectionTests
         target.Sos($"do {marker:x}").AssertContains("ThinLockMarker");
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpObj_NoFields_OmitsFieldTable(TestConfig config)
     {
@@ -78,7 +78,7 @@ public sealed class ObjectInspectionTests
         Assert.Equal(full.MethodTable, noFields.MethodTable);
     }
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task Ip2md_ResolvesJittedMethodWithSource(TestConfig config)
     {

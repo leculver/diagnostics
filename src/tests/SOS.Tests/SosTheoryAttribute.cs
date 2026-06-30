@@ -16,9 +16,9 @@ namespace SOS.Tests;
 /// the empty-data check fires.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class MatrixTheoryAttribute : TheoryAttribute
+public sealed class SosTheoryAttribute : TheoryAttribute
 {
-    public MatrixTheoryAttribute(
+    public SosTheoryAttribute(
         [System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "",
         [System.Runtime.CompilerServices.CallerLineNumber] int sourceLineNumber = -1)
         : base(sourceFilePath, sourceLineNumber)

@@ -25,7 +25,7 @@ public sealed class ClrStackFullTests
                 TargetCatalog.NestedException,
             ]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_Full(TestConfig config)
     {

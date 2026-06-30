@@ -20,7 +20,7 @@ public sealed class DumpHeapLiveDeadTests
     private const string LiveType = "LiveUniqueMarker";
     private const string DeadType = "DeadUniqueMarker";
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task DumpHeap_LiveAndDead(TestConfig config)
     {

@@ -19,7 +19,7 @@ public sealed class ClrStackICorDebugTests
     public static TheoryData<TestConfig> Matrix { get; }
         = TestConfig.BuildMatrix([TargetCatalog.DivZero, TargetCatalog.Scenarios]);
 
-    [MatrixTheory]
+    [SosTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_ICorDebug(TestConfig config)
     {
