@@ -42,30 +42,6 @@ property: managed frames are always preserved (every plain managed frame IP appe
 assembly-qualified; under cdb `-f` additionally contains real native-runtime frames and is strictly larger
 than plain `clrstack`, while under dotnet-dump it contains none.
 
-## clrstack-i-singlefile (resolved)
-
-**Configuration:** `!clrstack -i` / `-i -a` (ICorDebug) on a **SingleFile** target stopped at the Scenarios
-`argslocals` marker.
-
-This was previously baselined as two ICorDebug-on-single-file defects (truncated leaf frames, and locals
-coming back as `(Error 0x80004005 retrieving local variable 'local_N')`). **Neither reproduces.** With the
-debuggees published by the net11 test SDK (see singlefile-net11-sdk), single-file ICorDebug behaves exactly
-like Core/Framework on every version (net8–net11): the `AtArgsLocals` marker leaf frame is present, and the
-`ArgsLocalsMethod` frame resolves named locals with decoded values (`int localInt = 99`,
-`LocalUniqueMarker localObj @ 0x…`).
-
-**Root cause of the original symptom:** the user assembly carries an **embedded portable PDB**
-(`DebugType=embedded`, the repo default). The embedded PDB lives inside `SosHarnessScenarios.dll`, which is
-bundled into the single-file exe and captured in the dump's memory image, so ICorDebug reads local names and
-scopes normally. The earlier failure was an artifact of publishing single-file with the wrong product SDK
-(`.dotnet`) rather than an ICorDebug or PDB-location limitation. The residual `(Error … 'local_N')` lines
-are compiler-generated temporaries (unnamed in the PDB), not the user-named locals — they appear on Core and
-Framework too and are never asserted.
-
-**Test handling:** `ClrStackICorDebugTests.ClrStack_ICorDebug` asserts the full set on every flavor —
-`AtArgsLocals` is required for Scenarios regardless of flavor, and `localInt`/`localObj` values + the
-`!dumpheap` object oracle are checked for SingleFile just like Core/Framework. No skip remains.
-
 ## dumpheap-min-max-decimal
 
 **Configuration:** `!dumpheap -min` / `-max` on every host and flavor.
@@ -186,70 +162,6 @@ via the dump host; only the *live* single-file navigation is unavailable on lldb
 entry points (`GoToStopPointCore` → `RunToBpmd`, and `RunToBreakpoint`), so every affected row is reported
 as skipped. Live single-file tests that do **not** depend on bpmd (e.g. run-to-crash) are unaffected and
 continue to run.
-
-## singlefile-net11-sdk (resolved — on-demand debuggee builds now use the test SDK)
-
-**Configuration:** every **SingleFile** + **net11** row (all hosts, all tests).
-
-**Symptom (as originally seen):** the on-demand single-file publish
-(`dotnet publish -r <rid> --self-contained true -p:PublishSingleFile=true -p:BuildProjectFramework=net11.0`)
-failed with `error NETSDK1045: The current .NET SDK does not support targeting .NET 11.0.`
-
-**Root cause / status: the harness shelled the on-demand debuggee build/publish through the wrong SDK.**
-`SnapshotStore` invoked `RepoLayout.DotNetExe` — the repo's `.dotnet` build SDK (10.0.x), used to build the
-shipping diagnostics tools per `global.json` — which cannot target net11. The repo *does* carry a
-net11-capable SDK: the **test SDK** at `artifacts/dotnet-test/sdk/11.0.100-preview.*`, which `Debuggees.proj`
-already uses to pre-build the framework-dependent debuggees ("built using the test SDK from
-artifacts/dotnet-test/"). The framework-dependent Core net11 debuggees worked only because they were
-pre-built by that test SDK; the on-demand Core build fallback had the same latent bug.
-
-**Fix:** on-demand debuggee builds and publishes (`SnapshotStore.AcquireCore` / `BuildFlavor`, both Framework
-and SingleFile) now shell through `RepoLayout.DotnetTestExe` (`artifacts/dotnet-test/dotnet`) — the same
-net11-capable SDK the prebuild uses — instead of the product-build `.dotnet`. The two SDKs are intentionally
-separate (`.dotnet` builds the tools; `dotnet-test` tracks the net11 preview runtime/SDK for debuggees), so
-debuggee acquisition must use the latter. Harness-infra subprocess builds (EngineHost/Capturer, net10.0) and
-the dotnet-dump self-collect host stay on `.dotnet`.
-
-**Test handling:** **resolved — the `(SingleFile, net11)` prune in `TestConfig.IsValid` is removed.** net11
-single-file debuggees publish on demand (a ~72 MB self-contained bundle) and the SingleFile/net11 rows pass
-(legacy + cDAC). net8/9/10 SingleFile are unaffected by the SDK switch.
-
-## cdac-net11-stackwalk (resolved — spurious; stale dev-box cDAC artifact)
-
-**Configuration:** **net11** + **cDAC** + **dotnet-dump** host — the `clrstack`-family commands
-(`ClrStack_Registers`, `ClrStack_Full`, `ClrStack_FrameCount`, `ClrStack_ArgsLocals`, `ClrStack_AllThreads`,
-`ClrStack_SourceLines`, `ClrStack_GcRoots`, `ClrStack_GcRoots_Flags`) and `parallelstacks`
-(`ParallelStacks_GroupsThreadsByCallStack`).
-
-**Symptom (as originally seen):** under the cDAC on net11 the managed stack walk produced no frames on the
-dotnet-dump host. `clrstack -r` printed `Failed to start stack walk: 80131509` (`COR_E_INVALIDOPERATION`)
-after the `OS Thread Id:` banner; `parallelstacks` reported `==> 0 threads with 0 roots`.
-
-**Root cause / status: NOT a runtime/cDAC defect — a stale build artifact on the dev box.** The dump's
-runtime is `11.0.0-preview.6.26318.108`, and the repo pins the cDAC transport
-(`runtime.<rid>.Microsoft.DotNet.Cdac.Transport`, `eng/Version.Details.xml`) to the *same* build
-`26318.108`, whose `libmscordaccore_universal.so` does **not** reference the `Debugger.RgHijackFunction`
-field. However, a leftover **`26319.105`** `libmscordaccore_universal.so` (one build newer, after
-dotnet/runtime [#129091] `bf4477488b4` "[cDAC] Stackwalk DacDbi APIs" added `RgHijackFunction` to both the
-runtime data descriptor and the cDAC `Data.Debugger` reader) had been copied into the `dotnet-dump` publish
-directory during an earlier incremental build and was never refreshed. The cDAC's `Data.Debugger` ctor
-eagerly reads every `[Field]`, including `RgHijackFunction`; against the older `26318.108` runtime contract
-(which predates the field) that read throws `InvalidOperationException: Field not found in any layout
-(names=[RgHijackFunction])`, surfaced as COM HR `0x80131509`. `StackWalk.Next()` calls `GetHijackKind` on the
-first frame, so every cDAC walk died at frame 0.
-
-Replacing the stale publish-dir `libmscordaccore_universal.so` with the **pinned `26318.108`** copy (what a
-clean build produces) makes the cDAC walk every frame correctly. So the configured product is correct; this
-was purely a version-skewed leftover. cDAC↔runtime back-compat is not even a guarantee until net11 ships, and
-here the pinned cDAC and the runtime are the *same* build by design.
-
-**Test handling:** **resolved — `KnownIssues.SkipCDacNet11StackwalkOnDotnetDump` removed** and all call sites
-deleted. The full clrstack family + `parallelstacks` pass on net11 cDAC/dotnet-dump (44 passed, 0 skipped
-besides the Windows-only cdb `eestack`/`dumpstack` rows). If this resurfaces on a dev box, check for a stale
-`libmscordaccore_universal.so` in `artifacts/bin/dotnet-dump/.../publish/` whose version does not match the
-`Cdac.Transport` pin; a clean rebuild fixes it.
-
-[#129091]: https://github.com/dotnet/runtime/pull/129091
 
 ## cdac-net11-notimpl
 
