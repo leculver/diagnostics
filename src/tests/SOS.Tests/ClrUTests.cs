@@ -18,7 +18,7 @@ public sealed class ClrUTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
 
-    [MatrixTheory]
+    [WindowsTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrU_StructureLinesOffsets(TestConfig config)
     {
@@ -47,7 +47,7 @@ public sealed class ClrUTests
         Assert.Equal(0, offsets.Instructions[0].Offset);
     }
 
-    [MatrixTheory]
+    [WindowsTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrU_InterleavesGcInfoEhInfoIl(TestConfig config)
     {
@@ -72,7 +72,7 @@ public sealed class ClrUTests
         Assert.Contains(target.EhInfo(lockHolder.MethodDesc.Value).Clauses, c => c.Kind.Contains("FINALLY", StringComparison.Ordinal));
     }
 
-    [MatrixTheory]
+    [WindowsTheory]
     [MemberData(nameof(Matrix))]
     public async Task ClrU_AcceptsInstructionPointer(TestConfig config)
     {

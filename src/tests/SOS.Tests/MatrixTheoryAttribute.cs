@@ -6,13 +6,14 @@ using Xunit;
 namespace SOS.Tests;
 
 /// <summary>
-/// A <see cref="TheoryAttribute"/> for the SOS test matrix that skips (rather than fails) a theory whose
-/// data set is empty. Every SOS test sources its data from <c>TestConfig.BuildMatrix</c>, which filters
-/// out configurations that don't apply to the current platform (for example a cdb-only test on Linux/macOS,
-/// or an lldb-only test on Windows). When that filtering removes every row the matrix is legitimately
-/// empty for this platform — that should report as "skipped", not a failure. xunit's default is to fail a
-/// theory with no data, so <see cref="TheoryAttribute.SkipTestWithoutData"/> is enabled here to make the
-/// whole suite green across platforms with no per-test annotation.
+/// A <see cref="TheoryAttribute"/> for a cross-platform SOS test — one whose matrix is non-empty on every
+/// platform the suite runs on. Every SOS test sources its data from <c>TestConfig.BuildMatrix</c>, which
+/// filters out configurations that don't apply to the current platform. xunit's default behaviour (an
+/// empty data set is a failure) is kept deliberately: if such a matrix comes back empty it means the test
+/// was misconfigured (or a host regressed), and that should surface as a real failure rather than a silent
+/// skip. Tests whose matrix is intentionally single-platform use a platform-gated attribute instead (for
+/// example <see cref="WindowsTheoryAttribute"/> for cdb-only matrices), which skips via the OS gate before
+/// the empty-data check fires.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class MatrixTheoryAttribute : TheoryAttribute
@@ -22,6 +23,5 @@ public sealed class MatrixTheoryAttribute : TheoryAttribute
         [System.Runtime.CompilerServices.CallerLineNumber] int sourceLineNumber = -1)
         : base(sourceFilePath, sourceLineNumber)
     {
-        SkipTestWithoutData = true;
     }
 }

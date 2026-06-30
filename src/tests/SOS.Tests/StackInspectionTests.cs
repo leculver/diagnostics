@@ -53,7 +53,7 @@ public sealed class StackInspectionTests
         Assert.Matches(@"\d+ threads", ps.Text); // the "==> N threads with M roots" footer
     }
 
-    [MatrixTheory]
+    [WindowsTheory]
     [MemberData(nameof(CdbMatrix))]
     public async Task DumpStack_WalksNativeAndManagedFrames(TestConfig config)
     {
@@ -65,7 +65,7 @@ public sealed class StackInspectionTests
         stack.AssertContains("SosHarnessScenarios.Main()");
     }
 
-    [MatrixTheory]
+    [WindowsTheory]
     [MemberData(nameof(CdbMatrix))]
     public async Task EeStack_WalksAllThreads(TestConfig config)
     {
