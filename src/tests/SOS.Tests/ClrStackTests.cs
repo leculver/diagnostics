@@ -43,7 +43,11 @@ public sealed class ClrStackTests
                 TargetCatalog.AsyncMain,
                 TargetCatalog.DynamicMethod,
                 TargetCatalog.Scenarios,
-            ]);
+            ],
+            // Live opt-in: !clrstack is one of the few commands that genuinely exercises a different path
+            // live (it unwinds a live thread's stack and reads its register context), so this base
+            // stackwalk runs dump AND live. Most other clrstack variations stay dump-only.
+            liveness: Liveness.AllValid);
 
     [SosTheory]
     [MemberData(nameof(RegistersMatrix))]
@@ -102,7 +106,9 @@ public sealed class ClrStackTests
     private static TheoryData<TestConfig, string> BuildGcRootsMatrix()
     {
         TheoryData<TestConfig, string> data = new();
-        foreach (TestConfig config in TestConfig.Permutations([TargetCatalog.Scenarios]))
+        // Live opt-in: !clrstack -gcroots is fundamentally different from !clrstack (it scans the live
+        // stack and registers for GC-reported roots), so it runs dump AND live.
+        foreach (TestConfig config in TestConfig.Permutations([TargetCatalog.Scenarios], liveness: Liveness.AllValid))
         {
             data.Add(config, TargetCatalog.StopRoots);
             data.Add(config, TargetCatalog.StopArgsLocals);

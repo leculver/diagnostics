@@ -79,11 +79,15 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
     /// Generate the cross-product of the requested axes as a single-column theory source, filtered to the
     /// valid configurations for the current platform (see <see cref="IsValid"/>).
     ///
-    /// <para>Axis defaults are deliberate: <paramref name="host"/>/<paramref name="flavor"/>/
-    /// <paramref name="liveness"/> default to <c>AllValid</c> (full coverage), but <paramref name="gcType"/>
-    /// defaults to <see cref="GcType.Workstation"/> and <paramref name="dumpKind"/> to
-    /// <see cref="DumpKind.Full"/> — Server GC and Mini dumps are opt-in, so the matrix doesn't explode and
-    /// reduced-dump-only failures aren't swept into every test.</para>
+    /// <para>Axis defaults are deliberate: <paramref name="host"/>/<paramref name="flavor"/> default to
+    /// <c>AllValid</c> (full coverage), but <paramref name="liveness"/> defaults to
+    /// <see cref="Liveness.Dump"/>, <paramref name="gcType"/> to <see cref="GcType.Workstation"/>, and
+    /// <paramref name="dumpKind"/> to <see cref="DumpKind.Full"/>. Live debugging is slow (a debugger
+    /// ptrace-attached to a running process, one session per core) and almost every command behaves
+    /// identically against a dump, so live coverage is <em>opt-in</em>: a test that uniquely benefits from a
+    /// live process (e.g. a stack walk reading live thread contexts, a live GC heap/root scan) passes
+    /// <c>liveness: Liveness.AllValid</c> to run dump <em>and</em> live; everything else stays dump-only.
+    /// Server GC and Mini dumps are likewise opt-in so the matrix doesn't explode.</para>
     ///
     /// <para>Each axis can be narrowed at run time by a comma-separated env allow-list:
     /// <c>SOSHARNESS_ONLY_HOSTS</c>, <c>_FLAVORS</c>, <c>_LIVENESS</c>, <c>_GCTYPE</c>, <c>_DUMPKIND</c>,
@@ -92,7 +96,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         string[] targets,
         Flavor flavor = Flavor.AllValid,
         Host host = Host.AllValid,
-        Liveness liveness = Liveness.AllValid,
+        Liveness liveness = Liveness.Dump,
         GcType gcType = GcType.Workstation,
         DumpKind dumpKind = DumpKind.Full,
         bool publicSymbols = false,
@@ -117,7 +121,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         string[] targets,
         Flavor flavor = Flavor.AllValid,
         Host host = Host.AllValid,
-        Liveness liveness = Liveness.AllValid,
+        Liveness liveness = Liveness.Dump,
         GcType gcType = GcType.Workstation,
         DumpKind dumpKind = DumpKind.Full,
         bool publicSymbols = false,

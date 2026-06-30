@@ -18,7 +18,10 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpHeapObjectsTests
 {
-    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    // Live opt-in: !dumpheap is the representative live GC heap walk (it enumerates the live heap's
+    // segments/regions), so the base statistics test runs dump AND live; the dumpheap variations elsewhere
+    // (-strings, -thinlock, -live/-dead, generations) stay dump-only.
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], liveness: Liveness.AllValid);
 
     [SosTheory]
     [MemberData(nameof(Matrix))]

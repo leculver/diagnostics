@@ -22,7 +22,9 @@ public sealed class ClrThreadsTests
     /// Flavors = e.g. [Flavor.Core, Flavor.SingleFile, Flavor.Framework]
     /// </summary>
     public static TheoryData<TestConfig> Matrix { get; }
-                    = TestConfig.BuildMatrix([TargetCatalog.NestedException, TargetCatalog.Scenarios]);
+                    // Live opt-in: !clrthreads enumerates the live thread list, so this base test runs
+                    // dump AND live as the representative live-thread-enumeration check.
+                    = TestConfig.BuildMatrix([TargetCatalog.NestedException, TargetCatalog.Scenarios], liveness: Liveness.AllValid);
 
     [SosTheory]
     [MemberData(nameof(Matrix))]

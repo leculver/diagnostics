@@ -15,7 +15,9 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class StackInspectionTests
 {
-    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    // Live opt-in: !dso (dumpstackobjects) scans a live thread's stack memory for object references, so
+    // DumpStackObjects_ListsStackRoots runs dump AND live; the other stack commands here stay dump-only.
+    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], liveness: Liveness.AllValid);
     public static TheoryData<TestConfig> CdbMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 

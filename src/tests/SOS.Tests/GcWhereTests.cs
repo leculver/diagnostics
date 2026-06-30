@@ -14,10 +14,11 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class GcWhereTests
 {
-    // gcwhere's structure and generation-promotion checks run on every host, dump and live alike. The
-    // live path drives bpmd through the gen0->gen1->gen2 promotion (GC.Collect(2) between markers); that
-    // works on the lldb host, so the full matrix is used.
+    // gcwhere's structure check is dump-only (the generation layout is identical in a dump). The
+    // generation-promotion check (GcWhere_Moves) is the live-worthy one: it drives bpmd through the
+    // gen0->gen1->gen2 promotion (GC.Collect(2) between markers) on a live process, so it opts into live.
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> LiveMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], liveness: Liveness.AllValid);
 
     [SosTheory]
     [MemberData(nameof(Matrix))]
@@ -44,7 +45,7 @@ public sealed class GcWhereTests
     }
 
     [SosTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(LiveMatrix))]
     public async Task GcWhere_Moves(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
