@@ -27,7 +27,6 @@ public sealed class ClrStackArgsLocalsTests
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_ArgsLocals(TestConfig config)
     {
-        KnownIssues.SkipCDacNet11StackwalkOnDotnetDump(config);
         using Target target = await Targets.GetTargetAsync(config);
         if (config.Target == TargetCatalog.Scenarios)
         {

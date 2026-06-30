@@ -200,23 +200,42 @@ or prebuilding net11 single-file debuggees during the repo build (the morning fo
 **Test handling:** the `(SingleFile, net11)` combination is pruned in `TestConfig.IsValid`, so those rows are
 never generated. Remove that gate once net11 single-file debuggees can be produced.
 
-## cdac-net11-stackwalk
+## cdac-net11-stackwalk (resolved — spurious; stale dev-box cDAC artifact)
 
 **Configuration:** **net11** + **cDAC** + **dotnet-dump** host — the `clrstack`-family commands
 (`ClrStack_Registers`, `ClrStack_Full`, `ClrStack_FrameCount`, `ClrStack_ArgsLocals`, `ClrStack_AllThreads`,
 `ClrStack_SourceLines`, `ClrStack_GcRoots`, `ClrStack_GcRoots_Flags`) and `parallelstacks`
 (`ParallelStacks_GroupsThreadsByCallStack`).
 
-Under the cDAC on net11, the managed stack walk returns no frames on the dotnet-dump host. `clrstack -r`
-prints only the `OS Thread Id:` banner with no `Child SP / IP / Call Site` table; `parallelstacks` reports
-`==> 0 threads with 0 roots`.
+**Symptom (as originally seen):** under the cDAC on net11 the managed stack walk produced no frames on the
+dotnet-dump host. `clrstack -r` printed `Failed to start stack walk: 80131509` (`COR_E_INVALIDOPERATION`)
+after the `OS Thread Id:` banner; `parallelstacks` reported `==> 0 threads with 0 roots`.
 
-**Root cause / status:** A cDAC (managed contract DAC) defect on net11 — the runtime's DAC side, out of scope
-for the harness; baselined pending a runtime/cDAC fix. Scoped narrowly because the **legacy** DAC walks
-correctly, and the **lldb** host walks correctly even under the cDAC (it supplies the native register/unwind
-context that the dotnet-dump managed analyzer lacks), so only the dotnet-dump cDAC path is affected.
+**Root cause / status: NOT a runtime/cDAC defect — a stale build artifact on the dev box.** The dump's
+runtime is `11.0.0-preview.6.26318.108`, and the repo pins the cDAC transport
+(`runtime.<rid>.Microsoft.DotNet.Cdac.Transport`, `eng/Version.Details.xml`) to the *same* build
+`26318.108`, whose `libmscordaccore_universal.so` does **not** reference the `Debugger.RgHijackFunction`
+field. However, a leftover **`26319.105`** `libmscordaccore_universal.so` (one build newer, after
+dotnet/runtime [#129091] `bf4477488b4` "[cDAC] Stackwalk DacDbi APIs" added `RgHijackFunction` to both the
+runtime data descriptor and the cDAC `Data.Debugger` reader) had been copied into the `dotnet-dump` publish
+directory during an earlier incremental build and was never refreshed. The cDAC's `Data.Debugger` ctor
+eagerly reads every `[Field]`, including `RgHijackFunction`; against the older `26318.108` runtime contract
+(which predates the field) that read throws `InvalidOperationException: Field not found in any layout
+(names=[RgHijackFunction])`, surfaced as COM HR `0x80131509`. `StackWalk.Next()` calls `GetHijackKind` on the
+first frame, so every cDAC walk died at frame 0.
 
-**Test handling:** skipped via `KnownIssues.SkipCDacNet11StackwalkOnDotnetDump`.
+Replacing the stale publish-dir `libmscordaccore_universal.so` with the **pinned `26318.108`** copy (what a
+clean build produces) makes the cDAC walk every frame correctly. So the configured product is correct; this
+was purely a version-skewed leftover. cDAC↔runtime back-compat is not even a guarantee until net11 ships, and
+here the pinned cDAC and the runtime are the *same* build by design.
+
+**Test handling:** **resolved — `KnownIssues.SkipCDacNet11StackwalkOnDotnetDump` removed** and all call sites
+deleted. The full clrstack family + `parallelstacks` pass on net11 cDAC/dotnet-dump (44 passed, 0 skipped
+besides the Windows-only cdb `eestack`/`dumpstack` rows). If this resurfaces on a dev box, check for a stale
+`libmscordaccore_universal.so` in `artifacts/bin/dotnet-dump/.../publish/` whose version does not match the
+`Cdac.Transport` pin; a clean rebuild fixes it.
+
+[#129091]: https://github.com/dotnet/runtime/pull/129091
 
 ## cdac-net11-notimpl
 

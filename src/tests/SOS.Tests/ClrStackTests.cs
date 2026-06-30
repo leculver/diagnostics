@@ -49,7 +49,6 @@ public sealed class ClrStackTests
     [MemberData(nameof(RegistersMatrix))]
     public async Task ClrStack_Registers(TestConfig config)
     {
-        KnownIssues.SkipCDacNet11StackwalkOnDotnetDump(config);
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 
@@ -116,7 +115,6 @@ public sealed class ClrStackTests
     [MemberData(nameof(GcRootsMatrix))]
     public async Task ClrStack_GcRoots(TestConfig config, string stopName)
     {
-        KnownIssues.SkipCDacNet11StackwalkOnDotnetDump(config);
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(stopName);
 
@@ -160,7 +158,6 @@ public sealed class ClrStackTests
     [MemberData(nameof(GcRootsFlagMatrix))]
     public async Task ClrStack_GcRoots_Flags(TestConfig config)
     {
-        KnownIssues.SkipCDacNet11StackwalkOnDotnetDump(config);
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint("roots");
 

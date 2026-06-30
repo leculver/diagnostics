@@ -84,17 +84,6 @@ internal static class KnownIssues
     // ---------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// On .NET 11 the cDAC's managed stack walk returns no frames under the dotnet-dump host: every
-    /// <c>clrstack</c>-family command (and <c>parallelstacks</c>) prints only the "OS Thread Id" banner /
-    /// "0 threads with 0 roots". The legacy DAC walks correctly, and the lldb host walks correctly under the
-    /// cDAC too (it supplies the native register/unwind context), so this is scoped to the dotnet-dump cDAC
-    /// path on net11. See issues.md#cdac-net11-stackwalk.
-    /// </summary>
-    public static void SkipCDacNet11StackwalkOnDotnetDump(TestConfig config) =>
-        Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11 && config.Dac == Dac.CDac && config.Host == Host.DotnetDump,
-            "cDAC managed stack walk returns no frames on .NET 11 under dotnet-dump; see issues.md#cdac-net11-stackwalk");
-
-    /// <summary>
     /// On .NET 11 some SOS maintenance commands (e.g. <c>sosflush</c>/<c>enummem</c>) return E_NOTIMPL
     /// (0x80004001, surfaced as "Unrecognized SOS command") under the cDAC on the dotnet-dump host. See
     /// issues.md#cdac-net11-notimpl.
