@@ -156,9 +156,19 @@ public abstract class LldbHostBase : IDebuggerHost
         {
             if (!_process.HasExited)
             {
-                _stdin.WriteLine("quit");
-                _stdin.Flush();
-                if (!_process.WaitForExit(5000))
+                // Ask lldb to quit. A *wedged* lldb (busy-spinning on its inferior, not reading stdin)
+                // never sees this, so don't wait long before escalating to a hard kill.
+                try
+                {
+                    _stdin.WriteLine("quit");
+                    _stdin.Flush();
+                }
+                catch
+                {
+                    // stdin may already be closed; fall through to the kill path.
+                }
+
+                if (!_process.WaitForExit(3000))
                 {
                     _process.Kill(entireProcessTree: true);
                 }
@@ -170,6 +180,19 @@ public abstract class LldbHostBase : IDebuggerHost
         }
         finally
         {
+            // Reap the child (and its debuggee, killed via the process tree above). Without this the
+            // killed lldb/debuggee linger as unreaped zombies; across a long multi-version run they
+            // accumulate, saturate the box, and wedge later live sessions. A bounded wait keeps teardown
+            // from blocking if the kill is still propagating.
+            try
+            {
+                _process.WaitForExit(10000);
+            }
+            catch
+            {
+                // best effort
+            }
+
             _process.Dispose();
         }
     }
