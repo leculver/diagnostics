@@ -119,5 +119,5 @@ internal static class KnownIssues
     /// </summary>
     public static void SkipThreadStateNet11(TestConfig config) =>
         Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11,
-            "clrthreads thread-state extraction fails on .NET 11; see issues.md#clrthreads-net11");
+            "net11 DAC zeroes clrthreads State (runtime regression, dotnet/runtime#126592); see issues.md#clrthreads-net11");
 }

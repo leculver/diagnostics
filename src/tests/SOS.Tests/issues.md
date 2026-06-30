@@ -249,14 +249,35 @@ in the test's expectations is a morning follow-up; baselined for now.
 **Configuration:** every **net11** row of `MemoryAndDecodeTests.ThreadState_DecodesStateFlags` (both DACs,
 both non-Windows hosts, dump and live).
 
-The test decodes a thread-state value (`threadstate <flags>`) lifted out of `clrthreads` output. On net11 it
-can't extract a thread-state value from `clrthreads` (its column shape changed), so there is nothing to
-decode. Affects both DACs.
+The test lifts a thread-state value out of the `clrthreads` **State** column (regex
+`([0-9a-fA-F]{6,8})\s+(?:Preemptive|Cooperative)`) and feeds it to `!threadstate`. On net11 the State column
+is `0` for **every** thread — including the Finalizer and Threadpool Workers, which must at minimum have
+`TS_Background = 0x200`. A bare `0` doesn't match (needs 6–8 hex digits), so there is nothing to decode.
+Affects both DACs. The column *shape* is unchanged; only the *value* is wrong (it is the SOS-printed hex of
+`DacpThreadData::state`, with no masking).
 
-**Root cause / status:** net11 `clrthreads` output-format change. SOS-vs-test-expectation triage is a morning
-follow-up; baselined for now.
+**Root cause (bedrock — dotnet/runtime regression):** dotnet/runtime PR
+[#126592](https://github.com/dotnet/runtime/pull/126592) "[cDAC] Fix bug in GetThreadData"
+(commit `9bb0c1ebc30`, 2026-04-11) deleted the line `threadData->state = thread->m_State;` from
+`ClrDataAccess::GetThreadData` in `src/coreclr/debug/daccess/request.cpp`, with no replacement. The PR's
+stated intent was about dead-thread reporting in a *different* path (`dacdbiimpl.cpp` /
+`GetThreadOwningMonitorLock`), so the deletion looks like collateral. `DacpThreadData::state` is still a
+field in the SOS contract (struct size pinned by `static_assert sizeof == 0x68` for back-compat) and SOS
+still reads it for the State column, but the DAC now leaves it at its `ZeroMemory` default of 0.
+
+This is **not cDAC-specific**: the cDAC's managed `SOSDacImpl.GetThreadData` returns `E_NOTIMPL`
+(`src/native/managed/cdacreader/src/Legacy/SOSDacImpl.cs`), so `--usecdac` falls back to the same legacy
+`GetThreadData` — hence both DACs report 0. The removal is an ancestor of the dump's build
+(`11.0.0-preview.6.26319.105`, source `b756a8d8`) and has not been re-added on `release/11.0-preview6`.
+
+**Impact beyond this test:** `!clrthreads` State is broken for *all* net11 users, not just the harness.
+The fix is to restore the one deleted line in the runtime. **Should be filed against dotnet/runtime.**
+
+**Status:** out of scope to fix in diagnostics (runtime/DAC defect); baselined here.
 
 **Test handling:** skipped via `KnownIssues.SkipThreadStateNet11`.
+
+**Repro dumps:** see the session `files/REPRO-clrthreads-state0.md` (net11 vs net10 side-by-side).
 
 ## cdac-net11-lldb-hostcrash (intermittent — observed, NOT baselined)
 
