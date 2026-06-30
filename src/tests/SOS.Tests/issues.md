@@ -271,13 +271,15 @@ This is **not cDAC-specific**: the cDAC's managed `SOSDacImpl.GetThreadData` ret
 (`11.0.0-preview.6.26319.105`, source `b756a8d8`) and has not been re-added on `release/11.0-preview6`.
 
 **Impact beyond this test:** `!clrthreads` State is broken for *all* net11 users, not just the harness.
-The fix is to restore the one deleted line in the runtime. **Should be filed against dotnet/runtime.**
+The fix is to restore the one deleted line in the runtime (`threadData->state = thread->m_State;`).
 
-**Status:** out of scope to fix in diagnostics (runtime/DAC defect); baselined here.
+**Status:** root cause is a dotnet/runtime regression. A fix has been written
+(`restore-thread-state` branch on the runtime fork; restores the deleted assignment). The diagnostics test
+is **intentionally left un-skipped** so it fails until the fixed DAC flows into the test runtimes — that red
+result is the signal that the runtime fix has not yet landed here.
 
-**Test handling:** skipped via `KnownIssues.SkipThreadStateNet11`.
-
-**Repro dumps:** see the session `files/REPRO-clrthreads-state0.md` (net11 vs net10 side-by-side).
+**Test handling:** **not skipped.** `ThreadState_DecodesStateFlags` runs on net11 and is expected to fail
+until the runtime DAC is fixed. (The former `KnownIssues.SkipThreadStateNet11` helper was removed.)
 
 ## cdac-net11-lldb-hostcrash (intermittent — observed, NOT baselined)
 

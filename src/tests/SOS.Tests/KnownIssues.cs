@@ -111,13 +111,4 @@ internal static class KnownIssues
     public static void SkipDumpDomainNet11(TestConfig config) =>
         Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11,
             "dumpdomain dropped the System Domain block on .NET 11; see issues.md#dumpdomain-net11");
-
-    /// <summary>
-    /// On .NET 11 the thread-state value can't be extracted from <c>clrthreads</c> output (its shape
-    /// changed), so the <c>threadstate</c> decode test has no value to decode. Affects both DACs. See
-    /// issues.md#clrthreads-net11.
-    /// </summary>
-    public static void SkipThreadStateNet11(TestConfig config) =>
-        Assert.SkipWhen(config.CoreVersion == CoreVersion.Net11,
-            "net11 DAC zeroes clrthreads State (runtime regression, dotnet/runtime#126592); see issues.md#clrthreads-net11");
 }
