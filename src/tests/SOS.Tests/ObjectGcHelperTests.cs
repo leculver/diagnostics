@@ -18,6 +18,10 @@ public sealed class ObjectGcHelperTests
     public static TheoryData<TestConfig> CoreRuntimeMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
+    // gchandleleaks is a Windows-only SOS command (gated #ifndef FEATURE_PAL); pair the Windows-only cdb
+    // host matrix with [WindowsTheory] so off-Windows rows are never generated rather than skipped.
+    public static TheoryData<TestConfig> CdbMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
+
     [SosTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task DumpObjGcRefs_ListsReferences(TestConfig config)
@@ -95,14 +99,12 @@ public sealed class ObjectGcHelperTests
         target.Sos($"dumpalc {target.FindUniqueObject("FieldMarker"):x}").AssertContains("DefaultAssemblyLoadContext");
     }
 
-    [SosTheory]
-    [MemberData(nameof(Matrix))]
+    [WindowsTheory]
+    [MemberData(nameof(CdbMatrix))]
     public async Task GcHandleLeaks_RunsHandleScan(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
-
-        KnownIssues.SkipGcHandleLeaksOffWindows();
 
         target.Sos("gchandleleaks").AssertContains("GCHandle");
     }

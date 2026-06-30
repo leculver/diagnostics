@@ -32,25 +32,6 @@ internal static class KnownIssues
             "ICorDebug cannot retrieve locals on single-file; see issues.md#clrstack-i-singlefile");
 
     /// <summary>
-    /// Driving the Scenarios debuggee live through the generation-promotion markers (a <c>bpmd</c> on
-    /// each of AtGen0/1/2 with a blocking <c>GC.Collect(2)</c> between them) crashes the debuggee with an
-    /// internal CLR error under live dbgeng. The dump path exercises the same generation progression, so
-    /// gcwhere's "object moves across generations" check runs there. See issues.md#gcwhere-live-gc.
-    /// </summary>
-    public static void SkipLiveGenPromotion(Liveness liveness) =>
-        Assert.SkipWhen(liveness == Liveness.Live,
-            "live gen-promotion bpmd + GC.Collect(2) crashes the debuggee under dbgeng; see issues.md#gcwhere-live-gc");
-
-    /// <summary>
-    /// <c>gchandleleaks</c> is a Windows-only SOS command (gated <c>#ifndef FEATURE_PAL</c>, registered only
-    /// by WindowsSOSCommand and absent from the Unix SOS exports), so it is unavailable on every non-Windows
-    /// host (lldb and dotnet-dump alike). See issues.md#gchandleleaks-windows-only.
-    /// </summary>
-    public static void SkipGcHandleLeaksOffWindows() =>
-        Assert.SkipWhen(!OperatingSystem.IsWindows(),
-            "gchandleleaks is a Windows-only SOS command; see issues.md#gchandleleaks-windows-only");
-
-    /// <summary>
     /// <c>enummem</c> (the ICLRDataEnumMemoryRegions test command) is not surfaced by the lldb SOS plugin and
     /// comes back as an unrecognized command there; it runs on the dbgeng and dotnet-dump hosts. See
     /// issues.md#enummem-lldb.

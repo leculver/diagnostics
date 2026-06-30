@@ -18,8 +18,8 @@ Fatal error. Internal CLR error. (0x80131506)
 This is an interaction between live managed breakpoints on the GC-bracketing markers and a full blocking
 GC under dbgeng (the parked worker threads in the consolidated debuggee likely aggravate it). The **dump**
 path exercises the exact same gen0→gen1→gen2 progression (each stop is captured independently), so the
-"object moves across generations" assertion still runs there. The live path skips via
-`KnownIssues.SkipLiveGenPromotion`.
+"object moves across generations" assertion still runs there. Both `GcWhere_Moves` and `GcWhere_Structure`
+source a dump-only matrix (`DumpMatrix`, `Liveness.Dump`), so no live rows are generated.
 
 ## clrstack-f-dotnet-dump-no-native-frames
 
@@ -104,10 +104,12 @@ cdb (Windows) and dotnet-dump (all platforms) and does not appear as a skip on t
 it is not exported by the Unix SOS library at all. On Linux/macOS both the lldb and dotnet-dump hosts report
 `Unrecognized SOS command 'gchandleleaks'`.
 
-**Root cause / status:** Not a bug. The command is Windows-only by design.
+**Root cause / status:** Not a bug. The command is Windows-only by design, and its implementation is
+dbgeng-oriented (memory scan via `g_ExtData2->QueryVirtual`, `MINIDUMP_NOT_SUPPORTED`).
 
-**Test handling:** `ObjectGcHelperTests.GcHandleLeaks_RunsHandleScan` runs on Windows (cdb + dotnet-dump);
-`KnownIssues.SkipGcHandleLeaksOffWindows` skips it on every non-Windows host.
+**Test handling:** `ObjectGcHelperTests.GcHandleLeaks_RunsHandleScan` uses `[WindowsTheory]` over a cdb-only
+matrix (`CdbMatrix`, `Host.Cdb`), so off-Windows rows are never generated and the OS gate skips the theory
+before the empty-data check on non-Windows platforms.
 
 ## enummem-lldb
 
