@@ -25,11 +25,13 @@ public sealed class DotNetDumpHost : IDebuggerHost
     private readonly StreamWriter _stdin;
     private readonly BlockingCollection<string> _lines = new();
     private readonly Thread _reader;
+    private readonly Flavor _flavor;
 
     public string Name => "dotnet-dump";
 
-    public DotNetDumpHost(string dumpPath)
+    public DotNetDumpHost(string dumpPath, Flavor flavor)
     {
+        _flavor = flavor;
         ProcessStartInfo psi = new()
         {
             RedirectStandardInput = true,
@@ -47,6 +49,12 @@ public sealed class DotNetDumpHost : IDebuggerHost
         psi.ArgumentList.Add(dumpPath);
 
         // Hermetic, local-only symbols (the dev's _NT_SYMBOL_PATH may point at the Azure-authed symweb).
+        // NOTE: unlike the cdb/lldb hosts, `dotnet-dump analyze` does NOT honor _NT_SYMBOL_PATH — its
+        // Analyzer unconditionally adds the public msdl symbol server on startup (see dotnet-dump
+        // Analyzer.cs). We still scrub the env for good measure, but the real seal is the
+        // `setsymbolserver -disable` issued in LoadSos below; otherwise a command that resolves symbols
+        // (e.g. `!clrstack -gc`) would synchronously download PDBs from msdl and intermittently stall
+        // past the harness command timeout, breaking hermeticity and flaking the suite.
         Directory.CreateDirectory(RepoLayout.SymbolCache);
         psi.Environment["_NT_SYMBOL_PATH"] = RepoLayout.SymbolCache;
 
@@ -63,6 +71,23 @@ public sealed class DotNetDumpHost : IDebuggerHost
     public void LoadSos()
     {
         // SOS is built into dotnet-dump's analyze host; nothing to load.
+
+        // Seal the host against the network: `dotnet-dump analyze` auto-adds the public msdl symbol
+        // server on startup, so clear it before any command runs. This keeps the suite hermetic and
+        // prevents the intermittent multi-minute hang where a symbol-resolving command (e.g.
+        // `!clrstack -gc`) blocks on a PDB download from msdl.
+        Run("setsymbolserver -disable");
+
+        // Self-contained single-file bundles carry coreclr inside the exe, so there is no runtime
+        // directory on disk next to which SOS can find the matching DAC — `analyze` was relying on the
+        // (now-disabled) msdl server to download it. Point SOS's symbol store at the runtime pack's
+        // native directory (a *local directory*, no network) so it resolves the DAC for the dump's
+        // coreclr build locally and the session stays hermetic. Mirrors LldbCliHost. Other flavors find
+        // their DAC next to the on-disk runtime and need no override.
+        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory is { Length: > 0 } dacDir)
+        {
+            Run($"setsymbolserver -directory \"{dacDir}\"");
+        }
 
         // Local-dev escape hatch (off by default; never set in CI). On a machine with mismatched private
         // runtime builds the bundled cDAC may not match the dump's coreclr and the managed

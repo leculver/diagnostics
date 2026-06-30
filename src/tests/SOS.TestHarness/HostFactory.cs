@@ -12,7 +12,7 @@ internal static class HostFactory
     {
         // cdb runs dbgeng in a CHILD process (EngineHost), so the test host never loads dbgeng.
         Host.Cdb => ChildEngineClient.ForDump(host.ToString().ToLowerInvariant(), dumpPath, DacDirFor(flavor), publicSymbols),
-        Host.DotnetDump => new DotNetDumpHost(dumpPath),
+        Host.DotnetDump => new DotNetDumpHost(dumpPath, flavor),
         Host.Lldb => new LldbCliHost(dumpPath, flavor),
         _ => throw new ArgumentException($"Unknown host '{host}'."),
     };
