@@ -37,7 +37,7 @@ public sealed class MiscCommandTests
         // sosflush and enummem produce no output but must be recognised commands that run cleanly.
         AssertRuns(target.Sos("sosflush"));
 
-        // enummem is not surfaced by the lldb SOS plugin (see issues.md#enummem-lldb); return early rather
+        // enummem is not surfaced by the lldb SOS plugin; return early rather
         // than skipping — sosflush above has already been verified on this config.
         if (config.Host == Host.Lldb)
         {

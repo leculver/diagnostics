@@ -57,8 +57,8 @@ public sealed class ObjectInspectionTests
         Assert.Equal(mt, dumpMd.MethodTable);
 
         // do is an alias for dumpobj, asserted last: the alias collides with lldb's built-in 'do' command
-        // so it can't be dispatched through the lldb SOS host (see issues.md#do-alias-lldb). Return early
-        // there rather than skipping — everything above has already been verified on this config.
+        // so it can't be dispatched through the lldb SOS host. Return early there rather than skipping —
+        // everything above has already been verified on this config.
         if (config.Host == Host.Lldb)
         {
             return;

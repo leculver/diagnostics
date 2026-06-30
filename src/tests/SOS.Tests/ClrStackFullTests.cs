@@ -11,9 +11,8 @@ namespace SOS.Tests;
 /// on WebApp/StackTests but only shape-checked it. Here the oracle is cross-variant: every managed
 /// frame from plain <c>clrstack</c> is preserved in <c>-f</c> (matched by IP) and rendered in the full
 /// assembly-qualified <c>Assembly.dll!Method + offset</c> format. The native dimension is host-specific
-/// (see issues.md#clrstack-f-dotnet-dump-no-native-frames): under cdb, <c>-f</c> must be strictly
-/// larger than plain and contain real native runtime frames (coreclr!/clr!/ntdll!/…); under the
-/// managed-only dotnet-dump host it contains no native frames.
+/// (by design): under cdb, <c>-f</c> must be strictly larger than plain and contain real native runtime
+/// frames (coreclr!/clr!/ntdll!/…); under the managed-only dotnet-dump host it contains no native frames.
 /// </summary>
 public sealed class ClrStackFullTests
 {
@@ -64,7 +63,7 @@ public sealed class ClrStackFullTests
             // Real native runtime frames (coreclr!/clr!/ntdll!/…) are only identifiable when the runtime
             // is its own module. In a self-contained single-file publish the runtime is statically linked
             // into the app executable, so those frames render under the app module name (e.g.
-            // SimpleThrow!…) and can't be matched by module name. See issues.md#clrstack-f-singlefile-runtime-frames.
+            // SimpleThrow!…) and can't be matched by module name.
             if (config.Flavor != Flavor.SingleFile)
             {
                 Assert.Contains(full, f => f.IsNativeRuntime);
@@ -72,7 +71,7 @@ public sealed class ClrStackFullTests
         }
         else
         {
-            // dotnet-dump is managed-only: no native runtime frames (see issues.md).
+            // dotnet-dump is managed-only: no native runtime frames.
             Assert.DoesNotContain(full, f => f.IsNativeRuntime);
         }
     }

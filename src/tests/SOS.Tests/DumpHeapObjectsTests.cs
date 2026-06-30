@@ -65,7 +65,7 @@ public sealed class DumpHeapObjectsTests
 
         // --- -min / -max bracket the known-large array by its declared size, in ONE cheap query (a
         // tiny result set). NOTE: SOS parses -min/-max as DECIMAL on every host/flavor, even though the
-        // command help says "(hex)" — see issues.md#dumpheap-min-max-decimal. ---
+        // command help says "(hex)". ---
         int big = TestTargets.SosHarnessScenarios.BigArraySize;
         DumpHeapResult bracket = target.DumpHeap($"-type System.Byte[] -min {big} -max {big + 4096}");
         Assert.NotEmpty(bracket.Objects); // the large array is in [big, big+4096]
