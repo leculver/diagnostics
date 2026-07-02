@@ -97,7 +97,17 @@ public sealed class DotNetDumpHost : IDebuggerHost
         // `--usecdac true`. The same dump is reused across both, so only this debug-time toggle differs.
         // SOSHARNESS_USECDAC (off by default; never set in CI) is a global clamp that overrides the axis on
         // a dev box whose installed runtimes are skewed such that the cDAC can't load. (Mirrors LldbCliHost.)
-        Run($"runtimes --usecdac {DacPolicy.UseCDac(_dac)}");
+        //
+        // Also disable DAC authenticode signature verification. dotnet-dump enables it by default on
+        // Windows (Analyzer.cs), so the legacy-DAC load path runs WinVerifyTrust on mscordaccore.dll. The
+        // test runtimes come from the locally-acquired artifacts/dotnet-test install, and a preview/CI
+        // runtime's DAC may be unsigned — WinVerifyTrust then fails with 0x800B0100 (TRUST_E_NOSIGNATURE),
+        // which surfaces as "Failed to load data access module, 0x80004002" and breaks EVERY legacy-DAC
+        // command on that runtime (e.g. net11 preview). Verification is a production safeguard against
+        // loading an untrusted DAC downloaded from a symbol server; it's inappropriate for a trusted local
+        // test DAC, which is exactly why the cDAC path and non-Windows already skip it. Turn it off here so
+        // Windows matches that behavior and the legacy DAC loads for unsigned preview runtimes.
+        Run($"runtimes --usecdac {DacPolicy.UseCDac(_dac)} --DacSignatureVerification false");
     }
 
     public SosOutput Execute(string command) => new(Name, command, Run(command));
