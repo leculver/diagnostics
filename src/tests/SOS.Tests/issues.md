@@ -110,3 +110,29 @@ reproducible, it is **not** hard-skipped — doing so would forfeit the ~11/12 p
 normally provides. Tracked here for the morning. Two follow-ups to weigh: (a) make the harness resilient by
 restarting a dead per-config host and retrying the in-flight command instead of cascading `Pipe is broken`;
 (b) capture the lldb/cdac crash (core or stderr) to pin the runtime-side defect.
+
+## icordebug-singlefile-locals
+
+**Configuration:** every **SingleFile** row of `ClrStackICorDebugTests.ClrStack_ICorDebug` against the
+`scenarios` target — i.e. `scenarios/{Cdb,DotnetDump}/SingleFile/{net8,net9,net10,net11}/Dump/…` (both
+DACs). Host-independent: it reproduces on cdb *and* dotnet-dump, so it is not a debugger-host quirk.
+
+`!clrstack -i -a` (ICorDebug) recovers real parameter/local **names** and decodes their **values** — the
+test cross-checks decoded locals against `!dumpheap` (e.g. `localInt == 99`, `localObj`'s address matches
+the uniquely-named heap object). On a self-contained **single-file** image this fails: ICorDebug returns the
+frame's locals as unnamed, undecodable error slots (`local_0`, `local_1`, … with `IsError = true`, no name,
+no value, no address), so the value-oracle assertions in `AssertArgsLocalsVariables` have nothing to match.
+The plain frame/method walk (`-i`, and `-i -a` frame presence) still works for single-file — only the
+local/parameter **decode** is missing. Non-single-file flavors (Core/Framework) decode locals fine on the
+same host, and single-file frames are still covered via the `divzero` target (which asserts no locals).
+
+**Root cause / status:** a real ICorDebug/DBI gap for self-contained single-file, not an intended
+limitation. It is **not** the user PDB missing from the bundle — building the debuggee with an embedded
+portable PDB (`DebugType=embedded`, so the symbols travel inside the single-file image and the dump) did
+**not** change the result (locals still came back as `IsError` slots), so the decode failure is deeper in
+how DBI maps a frame's locals for a bundled single-file module. Needs a runtime/DBI-side investigation.
+
+**Test handling:** **baselined as a visible dynamic skip** (`Assert.Skip`), *not* a silent early-return
+pass — so the config stays on the radar and we revisit it. `ClrStack_ICorDebug` verifies the ICorDebug
+frames/methods for single-file (those pass), then skips only the locals-value oracle when
+`Flavor == SingleFile`, citing this anchor. Remove the skip once DBI decodes single-file locals.
