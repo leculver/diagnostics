@@ -244,6 +244,14 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
             return false;
         }
 
+        // The cDAC (managed contract DAC) is a .NET Core concept; desktop .NET Framework has no cDAC, so
+        // `runtimes --usecdac true` fails on clr.dll ("no matching cDAC is available for this runtime").
+        // Prune the CDac axis for the Framework flavor (its CoreVersion label is meaningless anyway).
+        if (c.Dac == Dac.CDac && c.Flavor == Flavor.Framework)
+        {
+            return false;
+        }
+
         // The cDAC (managed contract DAC) only exists on .NET 11+; on earlier runtimes only the legacy
         // native DAC is available, so prune the CDac axis there. The same dump is reused across DAC values
         // (only `runtimes --usecdac` differs at debug time), so this just removes the invalid debug-time
