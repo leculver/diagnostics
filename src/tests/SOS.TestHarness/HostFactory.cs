@@ -21,7 +21,7 @@ internal static class HostFactory
     /// through a child EngineHost process; on Linux/macOS it drives the lldb CLI directly.</summary>
     public static ILiveDebuggerHost CreateLiveHost(Host host, Flavor flavor, string exePath, CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy) => host switch
     {
-        Host.Cdb => ChildEngineClient.ForLive(host.ToString().ToLowerInvariant(), exePath, DacDirFor(flavor, coreVersion), dac),
+        Host.Cdb => ChildEngineClient.ForLive(host.ToString().ToLowerInvariant(), exePath, DacDirFor(flavor, coreVersion), dac, flavor),
         Host.Lldb => new LldbLiveHost(exePath, flavor, coreVersion, dac),
         Host.DotnetDump => throw new ArgumentException("dotnet-dump is post-mortem only; it has no live host."),
         _ => throw new ArgumentException($"Unknown live host '{host}'."),

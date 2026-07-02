@@ -26,7 +26,7 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
 
     public string Name { get; }
 
-    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir, bool publicSymbols, Dac dac)
+    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir, bool publicSymbols, Dac dac, Flavor flavor)
     {
         Name = name;
 
@@ -67,6 +67,24 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
 
         psi.Environment["_NT_SYMBOL_PATH"] = symbolPath;
 
+        // The live debuggee is launched by the EngineHost (via CreateProcessAndAttach) and inherits its
+        // environment. For a framework-dependent (Core) live target, point the apphost at the multi-version
+        // test runtime install so it binds the runtime matching its target framework (net8 -> 8.0.x,
+        // net9 -> 9.0.x, net11 -> the installed preview). Without this the debuggee inherits the ambient
+        // DOTNET_ROOT (the product .dotnet, which carries only the repo's own runtime, e.g. net10), so a
+        // net9/net11 apphost fails framework resolution ("Framework 'Microsoft.NETCore.App' version 'x' not
+        // found") and exits at launch — before bpmd can bind — surfacing as "Process exited without hitting
+        // a breakpoint". Dump mode launches nothing, and SingleFile/Framework don't use a shared runtime, so
+        // this only applies to a live Core target. Mirrors LldbLiveHost and the dump-capture path
+        // (SnapshotStore.ApplyRuntimeRoot). MULTILEVEL_LOOKUP=0 keeps resolution strictly within the test
+        // install (no machine-wide fallback), so the debuggee's coreclr is the deterministic on-disk one.
+        if (mode == "live" && flavor == Flavor.Core)
+        {
+            psi.Environment["DOTNET_ROOT"] = RepoLayout.DotnetTestRoot;
+            psi.Environment["DOTNET_ROOT(x86)"] = RepoLayout.DotnetTestRoot;
+            psi.Environment["DOTNET_MULTILEVEL_LOOKUP"] = "0";
+        }
+
         _process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start EngineHost");
         _stdin = _process.StandardInput;
 
@@ -83,11 +101,11 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
 
     /// <summary>A child engine over a crash/snapshot dump.</summary>
     public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null, bool publicSymbols = false, Dac dac = Dac.Legacy) =>
-        new(hostName, "dump", new[] { dumpPath }, dacDir, publicSymbols, dac);
+        new(hostName, "dump", new[] { dumpPath }, dacDir, publicSymbols, dac, Flavor.Core);
 
     /// <summary>A live child engine that launches the target (parked at the loader break, SOS loaded).</summary>
-    public static ChildEngineClient ForLive(string hostName, string exePath, string? dacDir = null, Dac dac = Dac.Legacy) =>
-        new(hostName, "live", new[] { exePath }, dacDir, publicSymbols: false, dac);
+    public static ChildEngineClient ForLive(string hostName, string exePath, string? dacDir = null, Dac dac = Dac.Legacy, Flavor flavor = Flavor.Core) =>
+        new(hostName, "live", new[] { exePath }, dacDir, publicSymbols: false, dac, flavor);
 
     public void LoadSos()
     {
