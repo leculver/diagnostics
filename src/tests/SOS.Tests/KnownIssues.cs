@@ -33,4 +33,23 @@ internal static class KnownIssues
                 "target (0x80131509); see issues.md#clrstack-singlefile-net11-cdac");
         }
     }
+
+    /// <summary>
+    /// Skip the <c>!clrthreads</c> thread-state decode on <b>net11</b>. A dotnet/runtime regression
+    /// (PR <see href="https://github.com/dotnet/runtime/pull/126592">#126592</see> deleted
+    /// <c>threadData->state = thread->m_State;</c> from <c>ClrDataAccess::GetThreadData</c>) leaves the
+    /// <c>!clrthreads</c> <b>State</b> column at <c>0</c> for every net11 thread, so there is no non-zero
+    /// state value to decode. It affects both DACs (the cDAC's <c>GetThreadData</c> is <c>E_NOTIMPL</c> and
+    /// falls back to the same legacy function) and every host — i.e. a runtime-side defect the harness can't
+    /// work around. See issues.md#clrthreads-net11.
+    /// </summary>
+    public static void SkipIfThreadStateNet11(TestConfig config)
+    {
+        if (config.CoreVersion == CoreVersion.Net11)
+        {
+            Assert.Skip(
+                "net11 !clrthreads State is 0 for all threads (dotnet/runtime #126592 dropped " +
+                "DacpThreadData::state), so there is no thread state to decode; see issues.md#clrthreads-net11");
+        }
+    }
 }

@@ -40,6 +40,8 @@ public sealed class MemoryAndDecodeTests
     [MemberData(nameof(ScenariosMatrix))]
     public async Task ThreadState_DecodesStateFlags(TestConfig config)
     {
+        KnownIssues.SkipIfThreadStateNet11(config);
+
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 

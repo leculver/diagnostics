@@ -83,12 +83,14 @@ This is **not cDAC-specific**: the cDAC's managed `SOSDacImpl.GetThreadData` ret
 The fix is to restore the one deleted line in the runtime (`threadData->state = thread->m_State;`).
 
 **Status:** root cause is a dotnet/runtime regression. A fix has been written
-(`restore-thread-state` branch on the runtime fork; restores the deleted assignment). The diagnostics test
-is **intentionally left un-skipped** so it fails until the fixed DAC flows into the test runtimes — that red
-result is the signal that the runtime fix has not yet landed here.
+(`restore-thread-state` branch on the runtime fork; restores the deleted assignment) but has not yet flowed
+into the test runtimes.
 
-**Test handling:** **not skipped.** `ThreadState_DecodesStateFlags` runs on net11 and is expected to fail
-until the runtime DAC is fixed. (The former `KnownIssues.SkipThreadStateNet11` helper was removed.)
+**Test handling:** **baselined as a visible dynamic skip** (`Assert.Skip` via
+`KnownIssues.SkipIfThreadStateNet11`), *not* a silent early-return pass — so the config stays visible and is
+re-enabled the moment the fix lands. `ThreadState_DecodesStateFlags` skips on net11 (all hosts/flavors/DACs,
+since the cDAC's `GetThreadData` is `E_NOTIMPL` and falls back to the same regressed legacy function).
+Remove the guard once the runtime DAC repopulates `DacpThreadData::state`.
 
 ## cdac-net11-lldb-hostcrash (intermittent — observed, NOT baselined)
 
