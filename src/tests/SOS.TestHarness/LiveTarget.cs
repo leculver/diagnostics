@@ -42,8 +42,10 @@ public sealed class LiveTarget : Target
         _definition = definition;
 
         // Hold the live-session slot for the entire lifetime of this target (launch -> commands ->
-        // dispose), not just creation, so the cap actually bounds concurrent live debuggers.
-        s_liveGate.Wait();
+        // dispose), not just creation, so the cap actually bounds concurrent live debuggers. Observe the
+        // ambient test cancellation so a Ctrl+C while queued behind the gate unwinds promptly instead of
+        // blocking until a slot frees.
+        s_liveGate.Wait(HarnessCancellation.Token);
         _gateHeld = true;
         try
         {

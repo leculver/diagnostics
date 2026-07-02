@@ -121,7 +121,7 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
     {
         while (true)
         {
-            if (!_lines.TryTake(out string? line, timeout))
+            if (!_lines.TryTake(out string? line, (int)timeout.TotalMilliseconds, HarnessCancellation.Token))
             {
                 throw new TimeoutException("EngineHost did not become ready in time.");
             }
@@ -138,7 +138,7 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
         StringBuilder sb = new();
         while (true)
         {
-            if (!_lines.TryTake(out string? line, timeout))
+            if (!_lines.TryTake(out string? line, (int)timeout.TotalMilliseconds, HarnessCancellation.Token))
             {
                 throw new TimeoutException($"EngineHost did not return output for '{command}' within {timeout}.");
             }

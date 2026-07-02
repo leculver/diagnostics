@@ -120,7 +120,7 @@ public sealed class DotNetDumpHost : IDebuggerHost
         StringBuilder sb = new();
         while (true)
         {
-            if (!_lines.TryTake(out string? line, timeout))
+            if (!_lines.TryTake(out string? line, (int)timeout.TotalMilliseconds, HarnessCancellation.Token))
             {
                 throw new TimeoutException($"dotnet-dump did not return output for '{command ?? "<startup>"}' within {timeout}.");
             }
