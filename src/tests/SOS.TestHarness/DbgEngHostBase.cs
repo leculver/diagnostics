@@ -222,7 +222,7 @@ public abstract class DbgEngHostBase : IDebuggerHost
         done.Wait();
         if (error is not null)
         {
-            throw new InvalidOperationException($"{Name} host operation failed", error);
+            throw new InvalidOperationException($"{Name} host operation failed: {error.Message}", error);
         }
     }
 
