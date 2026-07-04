@@ -51,6 +51,7 @@ public sealed class ReplayContext
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ReplayContext> s_byTest = new();
 
     private readonly List<ReplayStep> _steps = new();
+    private readonly HashSet<HostDiagnostics> _hosts = new();
 
     private ReplayContext(string targetName, Host host, Flavor flavor, bool live)
     {
@@ -66,8 +67,30 @@ public sealed class ReplayContext
     public bool Live { get; }
     public IReadOnlyList<ReplayStep> Steps => _steps;
 
+    /// <summary>The host diagnostics (captured stdout/stderr and crash dumps) of every host this test
+    /// touched, deduplicated. A failing test's replay renders these.</summary>
+    public IReadOnlyCollection<HostDiagnostics> Hosts
+    {
+        get { lock (_hosts) { return _hosts.ToArray(); } }
+    }
+
     internal void Add(ReplayStepKind kind, string text, string? dumpPath) =>
         _steps.Add(new ReplayStep(kind, text, dumpPath));
+
+    /// <summary>Note that this test used a host, so its captured diagnostics can be surfaced on failure.
+    /// No-ops for a null host (e.g. the cdb child host, which is not wired for capture).</summary>
+    internal void AttachHost(HostDiagnostics? host)
+    {
+        if (host is null)
+        {
+            return;
+        }
+
+        lock (_hosts)
+        {
+            _hosts.Add(host);
+        }
+    }
 
     /// <summary>
     /// Begin capturing for the current test, replacing any prior capture for it. Keyed by the test's

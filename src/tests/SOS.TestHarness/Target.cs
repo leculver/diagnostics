@@ -37,6 +37,7 @@ public abstract class Target : IDisposable
     {
         GoToStopPointCore(stopName);
         ReplayContext.Current?.Add(ReplayStepKind.Navigate, $"GoToStopPoint(\"{stopName}\")", SafeDumpPath());
+        ReplayContext.Current?.AttachHost(CurrentDiagnostics);
     }
 
     /// <summary>Navigate to the target's crash. Dead: load the crash dump. Live: run forward to the crash.</summary>
@@ -44,14 +45,18 @@ public abstract class Target : IDisposable
     {
         GoToCrashCore();
         ReplayContext.Current?.Add(ReplayStepKind.Navigate, "GoToCrash()", SafeDumpPath());
+        ReplayContext.Current?.AttachHost(CurrentDiagnostics);
     }
 
     /// <summary>Run a SOS command at the current point.</summary>
     public SosOutput Sos(string command)
     {
         // Record before running so a throwing command is still captured; the dump (if any) is the one
-        // we're currently parked on, which is exactly what the command runs against.
+        // we're currently parked on, which is exactly what the command runs against. Attach the host's
+        // diagnostics up front too, so a command that crashes the host still surfaces its stdout/stderr
+        // and crash dump in the replay.
         ReplayContext.Current?.Add(ReplayStepKind.Sos, command, SafeDumpPath());
+        ReplayContext.Current?.AttachHost(CurrentDiagnostics);
         return SosCore(command);
     }
 
@@ -59,6 +64,7 @@ public abstract class Target : IDisposable
     public SosOutput Execute(string command)
     {
         ReplayContext.Current?.Add(ReplayStepKind.Execute, command, SafeDumpPath());
+        ReplayContext.Current?.AttachHost(CurrentDiagnostics);
         return ExecuteCore(command);
     }
 
@@ -86,6 +92,13 @@ public abstract class Target : IDisposable
             return null;
         }
     }
+
+    /// <summary>
+    /// The diagnostics (captured stdout/stderr and crash dumps) of the host currently backing this target,
+    /// or null if none is available. The replay attaches this when a command runs so a failing test can
+    /// show what the underlying debugger process did.
+    /// </summary>
+    internal virtual HostDiagnostics? CurrentDiagnostics => null;
 
     public virtual void Dispose()
     {

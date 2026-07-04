@@ -8,12 +8,12 @@ internal static class HostFactory
 {
     /// <summary>A dump-backed host (shared, read-only). <paramref name="publicSymbols"/> opts a cdb host
     /// into the sealed public-msdl symbol path for OS-symbol-dependent commands (e.g. <c>!maddress</c>).</summary>
-    public static IDebuggerHost CreateDumpHost(Host host, Flavor flavor, string dumpPath, bool publicSymbols = false, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10, string? targetExe = null) => host switch
+    public static IDebuggerHost CreateDumpHost(Host host, Flavor flavor, string dumpPath, bool publicSymbols = false, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10, string? targetExe = null, HostDiagnostics? diagnostics = null) => host switch
     {
         // cdb runs dbgeng in a CHILD process (EngineHost), so the test host never loads dbgeng.
         Host.Cdb => ChildEngineClient.ForDump(host.ToString().ToLowerInvariant(), dumpPath, DacDirFor(flavor, coreVersion), publicSymbols, dac),
-        Host.DotnetDump => new DotNetDumpHost(dumpPath, flavor, dac, coreVersion),
-        Host.Lldb => new LldbCliHost(dumpPath, flavor, dac, coreVersion, targetExe),
+        Host.DotnetDump => new DotNetDumpHost(dumpPath, flavor, dac, coreVersion, diagnostics),
+        Host.Lldb => new LldbCliHost(dumpPath, flavor, dac, coreVersion, targetExe, diagnostics),
         _ => throw new ArgumentException($"Unknown host '{host}'."),
     };
 

@@ -140,6 +140,8 @@ public sealed class LiveTarget : Target
 
     protected override SosOutput ExecuteCore(string command) => Engine.Execute(command);
 
+    internal override HostDiagnostics? CurrentDiagnostics => (_host as IDiagnosticHost)?.Diagnostics;
+
     private ILiveDebuggerHost Engine =>
         _host ?? throw new ObjectDisposedException(nameof(LiveTarget));
 

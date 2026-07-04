@@ -39,6 +39,8 @@ public sealed class DeadTarget : Target
 
     protected override SosOutput ExecuteCore(string command) => Current.Execute(command);
 
+    internal override HostDiagnostics? CurrentDiagnostics => _current?.Diagnostics;
+
     private DumpSession Current =>
         _current ?? throw new InvalidOperationException(
             "Target is not at a point yet; call GoToStopPoint(...) or GoToCrash() before Sos.");

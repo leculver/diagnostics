@@ -51,6 +51,10 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
         // code (see dotnet/diagnostics#3126), matching what the legacy live lldb harness set. For a
         // framework-dependent (Core) debuggee, point its apphost at the multi-version test runtime install
         // so it binds the runtime matching its target framework (net8 -> 8.0.x, net11 -> the preview).
+        //
+        // Capture the host's stdout/stderr for diagnosability, but do NOT enable crash-dump collection
+        // here: the env would be inherited by the launched debuggee and dump on every intentional crash a
+        // "run to crash" test triggers. Only the post-mortem lldb host (no debuggee) opts into dumps.
         StartLldb(psi =>
         {
             psi.Environment["DOTNET_EnableWriteXorExecute"] = "0";
@@ -60,7 +64,7 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
                 psi.Environment["DOTNET_ROOT(x86)"] = RepoLayout.DotnetTestRoot;
                 psi.Environment["DOTNET_MULTILEVEL_LOOKUP"] = "0";
             }
-        });
+        }, diagnostics: new HostDiagnostics(Name));
 
         Run($"target create \"{exePath}\"");
 

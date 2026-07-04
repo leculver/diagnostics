@@ -30,6 +30,10 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     private readonly bool _publicSymbols;  // cdb: use the sealed public-msdl symbol path (OS-symbol tests)
     private IDebuggerHost? _host;        // kept-alive host for non-pooled (cdb child) targets
 
+    // One diagnostics collector for the life of this session (survives the pooled dotnet-dump host being
+    // closed and reopened), for the child-process hosts that support capture. Null for the cdb child host.
+    private readonly HostDiagnostics? _diagnostics;
+
     public Host Host { get; }
     public string TargetName { get; }
     public string StopName { get; }
@@ -37,6 +41,10 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     public string DumpPath { get; }
     public CoreVersion CoreVersion { get; }
     public Dac Dac { get; }
+
+    /// <summary>Captured stdout/stderr and crash dumps for this session's host, or null for the cdb child
+    /// host (which does not support capture). Surfaced in a failing test's replay.</summary>
+    public HostDiagnostics? Diagnostics => _diagnostics;
 
     internal DumpSession(Host hostKind, string targetName, string stopName, Flavor flavor, string dumpPath, bool publicSymbols = false,
                          CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
@@ -56,10 +64,14 @@ internal sealed class DumpSession : IPooledHost, IDisposable
         _pooled = hostKind == Host.DotnetDump;
         _slot = _pooled ? HostSlot.DotNetDump : null;
 
+        // The child-process hosts (lldb, dotnet-dump) capture their stdout/stderr and crash dumps; the cdb
+        // child host runs dbgeng out-of-process and is not wired for capture.
+        _diagnostics = hostKind is Host.Lldb or Host.DotnetDump ? new HostDiagnostics(hostKind.ToString().ToLowerInvariant()) : null;
+
         if (!_pooled)
         {
             _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath, _publicSymbols, dac, coreVersion,
-                SnapshotStore.TargetExe(flavor, targetName, coreVersion));
+                SnapshotStore.TargetExe(flavor, targetName, coreVersion), _diagnostics);
             _host.LoadSos();
         }
     }
@@ -93,7 +105,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     void IPooledHost.OpenHost()
     {
         _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath, _publicSymbols, Dac, CoreVersion,
-            SnapshotStore.TargetExe(Flavor, TargetName, CoreVersion));
+            SnapshotStore.TargetExe(Flavor, TargetName, CoreVersion), _diagnostics);
         _host.LoadSos();
     }
 

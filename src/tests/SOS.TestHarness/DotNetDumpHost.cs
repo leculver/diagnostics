@@ -16,7 +16,7 @@ namespace SOS.TestHarness;
 /// SOS commands are bare here (no <c>!</c> prefix), so <see cref="Sos"/> passes the command
 /// through unchanged while the dbgeng host adds the <c>!</c>.
 /// </summary>
-public sealed class DotNetDumpHost : IDebuggerHost
+public sealed class DotNetDumpHost : IDebuggerHost, IDiagnosticHost
 {
     private const string EndMarker = "<END_COMMAND_OUTPUT>";
     private const string ErrorMarker = "<END_COMMAND_ERROR>";
@@ -25,17 +25,23 @@ public sealed class DotNetDumpHost : IDebuggerHost
     private readonly StreamWriter _stdin;
     private readonly BlockingCollection<string> _lines = new();
     private readonly Thread _reader;
+    private readonly Thread? _stderrReader;
+    private readonly HostDiagnostics? _diagnostics;
     private readonly Flavor _flavor;
     private readonly Dac _dac;
     private readonly CoreVersion _coreVersion;
 
     public string Name => "dotnet-dump";
 
-    public DotNetDumpHost(string dumpPath, Flavor flavor, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10)
+    /// <summary>Captured stdout/stderr and crash dumps for this host (see <see cref="IDiagnosticHost"/>).</summary>
+    public HostDiagnostics? Diagnostics => _diagnostics;
+
+    public DotNetDumpHost(string dumpPath, Flavor flavor, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10, HostDiagnostics? diagnostics = null)
     {
         _flavor = flavor;
         _dac = dac;
         _coreVersion = coreVersion;
+        _diagnostics = diagnostics;
         ProcessStartInfo psi = new()
         {
             RedirectStandardInput = true,
@@ -62,11 +68,24 @@ public sealed class DotNetDumpHost : IDebuggerHost
         Directory.CreateDirectory(RepoLayout.SymbolCache);
         psi.Environment["_NT_SYMBOL_PATH"] = RepoLayout.SymbolCache;
 
+        // dotnet-dump is itself a .NET process, so the standard crash-dump environment makes a fatal fault
+        // in it (or in the SOS code it hosts) write a full dump we can surface as an artifact.
+        _diagnostics?.ConfigureCrashDumps(psi);
+
         _process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start dotnet-dump");
         _stdin = _process.StandardInput;
+        _diagnostics?.RecordProcess(_process);
 
         _reader = new Thread(ReadLoop) { IsBackground = true, Name = "dotnet-dump-reader" };
         _reader.Start();
+
+        // Drain stderr on its own thread (previously redirected but never read) so a crash's diagnostics
+        // are retained for the replay instead of discarded.
+        if (_diagnostics is not null)
+        {
+            _stderrReader = new Thread(StderrLoop) { IsBackground = true, Name = "dotnet-dump-stderr" };
+            _stderrReader.Start();
+        }
 
         // Drain the startup banner up to the first marker so the host is ready for commands.
         DrainToMarker(TimeSpan.FromSeconds(120));
@@ -164,7 +183,24 @@ public sealed class DotNetDumpHost : IDebuggerHost
         string? line;
         while ((line = _process.StandardOutput.ReadLine()) is not null)
         {
+            _diagnostics?.AppendStdout(line);
             _lines.Add(line);
+        }
+    }
+
+    private void StderrLoop()
+    {
+        try
+        {
+            string? line;
+            while ((line = _process.StandardError.ReadLine()) is not null)
+            {
+                _diagnostics?.AppendStderr(line);
+            }
+        }
+        catch
+        {
+            // Best effort: the process may die mid-read. Whatever we captured is still available.
         }
     }
 

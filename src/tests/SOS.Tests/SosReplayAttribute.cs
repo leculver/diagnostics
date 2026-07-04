@@ -76,8 +76,10 @@ internal static class ReplayRenderer
         sb.AppendLine("# ───────────────────────────────────────────────────────────────────────────");
 
         AppendFailure(sb, state);
+        AppendArtifacts(sb, replay);
         AppendTimeline(sb, replay);
         AppendReplay(sb, replay);
+        AppendHostOutput(sb, replay);
 
         return sb.ToString();
     }
@@ -100,6 +102,74 @@ internal static class ReplayRenderer
             if (line.Trim().Length > 0)
             {
                 sb.AppendLine($"#   {line.TrimEnd()}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// List any crash dumps the debugger host(s) dropped as plain <c>artifact:</c> lines (deliberately not
+    /// comment-prefixed, so they're easy to grep and hand straight to a debugger). A "Pipe is broken" or a
+    /// command timeout usually means the host process crashed out from under us; if its hosted .NET runtime
+    /// wrote a dump, this is where to find it.
+    /// </summary>
+    private static void AppendArtifacts(StringBuilder sb, ReplayContext replay)
+    {
+        List<string> artifacts = replay.Hosts.SelectMany(h => h.Artifacts()).Distinct().OrderBy(p => p, System.StringComparer.Ordinal).ToList();
+        if (artifacts.Count == 0)
+        {
+            return;
+        }
+
+        sb.AppendLine("#");
+        sb.AppendLine("# --- artifacts (crash dumps written by the host process) -------------------");
+        foreach (string artifact in artifacts)
+        {
+            sb.AppendLine($"artifact: {artifact}");
+        }
+    }
+
+    /// <summary>
+    /// Emit the captured stdout and stderr of each debugger host the test drove. stderr in particular was
+    /// previously discarded, yet it carries the crash diagnostics, python errors, and unhandled-exception
+    /// traces that explain a broken pipe or a wedge.
+    /// </summary>
+    private static void AppendHostOutput(StringBuilder sb, ReplayContext replay)
+    {
+        foreach (HostDiagnostics host in replay.Hosts)
+        {
+            string stderr = host.StderrTail();
+            string stdout = host.StdoutTail();
+            if (stderr.Length == 0 && stdout.Length == 0 && host.CommandLine.Length == 0)
+            {
+                continue;
+            }
+
+            sb.AppendLine("#");
+            sb.AppendLine($"# --- host process: {host.Name} ------------------------------------------------");
+            if (host.CommandLine.Length > 0)
+            {
+                sb.AppendLine($"# launched: {host.CommandLine}");
+            }
+
+            AppendStream(sb, "stderr", stderr);
+            AppendStream(sb, "stdout", stdout);
+        }
+    }
+
+    private static void AppendStream(StringBuilder sb, string label, string content)
+    {
+        sb.AppendLine($"# --- {label} ---");
+        if (content.Length == 0)
+        {
+            sb.AppendLine("# (empty)");
+            return;
+        }
+
+        foreach (string line in content.Replace("\r", string.Empty).Split('\n'))
+        {
+            if (line.Length > 0)
+            {
+                sb.AppendLine($"# {line}");
             }
         }
     }

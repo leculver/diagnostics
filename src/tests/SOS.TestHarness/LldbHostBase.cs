@@ -17,7 +17,7 @@ namespace SOS.TestHarness;
 /// <c>sethostruntime</c>. Derived hosts differ only in how they create the target (a core file vs. a
 /// launched process) and how they advance it.
 /// </summary>
-public abstract class LldbHostBase : IDebuggerHost
+public abstract class LldbHostBase : IDebuggerHost, IDiagnosticHost
 {
     private const string EndMarker = "<END_COMMAND_OUTPUT>";
     private const string ErrorMarker = "<END_COMMAND_ERROR>";
@@ -28,8 +28,13 @@ public abstract class LldbHostBase : IDebuggerHost
     private StreamWriter _stdin = null!;
     private readonly BlockingCollection<string> _lines = new();
     private Thread _reader = null!;
+    private Thread? _stderrReader;
+    private HostDiagnostics? _diagnostics;
 
     public abstract string Name { get; }
+
+    /// <summary>Captured stdout/stderr and crash dumps for this host (see <see cref="IDiagnosticHost"/>).</summary>
+    public HostDiagnostics? Diagnostics => _diagnostics;
 
     /// <summary>
     /// How long to wait for a single command's output before declaring lldb wedged. Dump hosts answer from
@@ -58,10 +63,16 @@ public abstract class LldbHostBase : IDebuggerHost
     /// Spawn lldb, import the command helper, and drain the startup banner so the host is ready for
     /// commands. Derived constructors call this first, then create/advance their target.
     /// <paramref name="configure"/> runs against the <see cref="ProcessStartInfo"/> before launch (e.g. to
-    /// set debuggee environment variables a live host needs inherited).
+    /// set debuggee environment variables a live host needs inherited). <paramref name="diagnostics"/>, if
+    /// supplied, captures the process's stdout/stderr; when <paramref name="captureCrashDumps"/> is also
+    /// set the process runs with the .NET crash-dump environment so a fatal fault in the hosted SOS runtime
+    /// writes a dump (only the dump host opts into this — a live host would otherwise also dump its
+    /// debuggee's intentional crashes).
     /// </summary>
-    protected void StartLldb(Action<ProcessStartInfo>? configure = null)
+    protected void StartLldb(Action<ProcessStartInfo>? configure = null, HostDiagnostics? diagnostics = null, bool captureCrashDumps = false)
     {
+        _diagnostics = diagnostics;
+
         string helper = Path.Combine(AppContext.BaseDirectory, "lldbhelper.py");
         if (!File.Exists(helper))
         {
@@ -97,13 +108,31 @@ public abstract class LldbHostBase : IDebuggerHost
         // that on-disk resolution working.
         psi.Environment.Remove("_NT_SYMBOL_PATH");
 
+        // Run the host with the .NET crash-dump environment so a fatal fault in the SOS managed runtime
+        // hosted inside lldb writes a full dump we can surface as an artifact. Do this before configure so
+        // a derived host could still override it if needed.
+        if (captureCrashDumps)
+        {
+            diagnostics?.ConfigureCrashDumps(psi);
+        }
+
         configure?.Invoke(psi);
 
         _process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start lldb");
         _stdin = _process.StandardInput;
+        _diagnostics?.RecordProcess(_process);
 
         _reader = new Thread(ReadLoop) { IsBackground = true, Name = "lldb-reader" };
         _reader.Start();
+
+        // Drain stderr on its own thread: lldb prints crash diagnostics, python errors, and unhandled
+        // managed-exception traces there. It was previously redirected but never read, so a full stderr
+        // pipe could even block the host — and, more importantly, the evidence for a crash was discarded.
+        if (_diagnostics is not null)
+        {
+            _stderrReader = new Thread(StderrLoop) { IsBackground = true, Name = "lldb-stderr" };
+            _stderrReader.Start();
+        }
 
         // Drain the startup banner up to the marker the helper prints from __lldb_init_module.
         DrainToMarker(LoadTimeout);
@@ -175,7 +204,24 @@ public abstract class LldbHostBase : IDebuggerHost
         string? line;
         while ((line = _process.StandardOutput.ReadLine()) is not null)
         {
+            _diagnostics?.AppendStdout(line);
             _lines.Add(line);
+        }
+    }
+
+    private void StderrLoop()
+    {
+        try
+        {
+            string? line;
+            while ((line = _process.StandardError.ReadLine()) is not null)
+            {
+                _diagnostics?.AppendStderr(line);
+            }
+        }
+        catch
+        {
+            // Best effort: the process may die mid-read. Whatever we captured is still available.
         }
     }
 

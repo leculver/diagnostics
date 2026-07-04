@@ -22,12 +22,12 @@ public sealed class LldbCliHost : LldbHostBase
 
     public override string Name => "lldb";
 
-    public LldbCliHost(string dumpPath, Flavor flavor, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10, string? targetExe = null)
+    public LldbCliHost(string dumpPath, Flavor flavor, Dac dac = Dac.Legacy, CoreVersion coreVersion = CoreVersion.Net10, string? targetExe = null, HostDiagnostics? diagnostics = null)
     {
         _flavor = flavor;
         _dac = dac;
         _coreVersion = coreVersion;
-        StartLldb();
+        StartLldb(diagnostics: diagnostics, captureCrashDumps: true);
 
         // Load the core. Pass the target executable as the module so lldb can map the program image —
         // essential for self-contained single-file bundles (coreclr is embedded in the exe) and for
