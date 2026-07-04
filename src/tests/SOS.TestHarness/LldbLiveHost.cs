@@ -18,7 +18,13 @@ namespace SOS.TestHarness;
 /// </summary>
 public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
 {
-    private const int MaxResumes = 50;
+    // A navigation resumes the debuggee through however many internal SOS notification breakpoints (JIT /
+    // prestub) it takes to reach the requested managed method. In the healthy case those auto-continue so
+    // the method is reached on the first resume; under heavy CPU contention that auto-continue can degrade
+    // into many separate stops. We therefore bound the walk by a wall clock (see CommandTimeout) rather
+    // than a small fixed resume count, and keep this only as a safety net against a pathological
+    // instantly-returning continue so the loop can never spin forever.
+    private const int MaxResumes = 10000;
 
     private readonly Flavor _flavor;
     private readonly Dac _dac;
@@ -97,22 +103,31 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
         string bpmdOutput = Sos($"bpmd {module} {method}").Text;
 
         // bpmd reaches the method in stages (a JIT/prestub notification, then the entry), so resume until
-        // clrstack confirms we are actually stopped at the requested method.
-        for (int i = 0; i < MaxResumes; i++)
+        // clrstack confirms we are actually stopped at the requested method. Normally SOS's notification
+        // breakpoints auto-continue and the method is reached on the very first resume; under a saturated
+        // full-matrix run that auto-continue can degrade into many individual stops, so bound the walk by
+        // a wall clock (CommandTimeout) instead of a small fixed count — a slow-but-progressing navigation
+        // must still complete, not fail at an arbitrary Nth resume.
+        DateTime deadline = DateTime.UtcNow + CommandTimeout;
+        int resumes = 0;
+        while (DateTime.UtcNow < deadline && resumes < MaxResumes)
         {
             string cont = Execute("process continue").Text;
-            if (HasExited(cont))
-            {
-                throw new InvalidOperationException($"Debuggee exited before hitting bpmd {module}!{method}.");
-            }
-
+            resumes++;
             if (StoppedAtMethod(method))
             {
                 return new SosOutput(Name, $"bpmd {module} {method}", bpmdOutput);
             }
+
+            if (HasExited(cont) || ProcessIsDead())
+            {
+                throw new InvalidOperationException(
+                    $"Debuggee exited before hitting bpmd {module}!{method} (after {resumes} resume(s)).");
+            }
         }
 
-        throw new InvalidOperationException($"Did not reach bpmd {module}!{method} after {MaxResumes} resumes.");
+        throw new InvalidOperationException(
+            $"Did not reach bpmd {module}!{method} within {CommandTimeout} ({resumes} resume(s)).");
     }
 
     /// <summary>
@@ -123,21 +138,24 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
     {
         ClearBreakpoints();
 
-        for (int i = 0; i < MaxResumes; i++)
+        DateTime deadline = DateTime.UtcNow + CommandTimeout;
+        int resumes = 0;
+        while (DateTime.UtcNow < deadline && resumes < MaxResumes)
         {
             string cont = Execute("process continue").Text;
-            if (HasExited(cont))
-            {
-                throw new InvalidOperationException("Process exited without crashing.");
-            }
-
+            resumes++;
             if (StoppedOnSignal(cont))
             {
                 return new SosOutput(Name, "run-to-crash", cont);
             }
+
+            if (HasExited(cont) || ProcessIsDead())
+            {
+                throw new InvalidOperationException("Process exited without crashing.");
+            }
         }
 
-        throw new InvalidOperationException($"Process did not crash after {MaxResumes} resumes.");
+        throw new InvalidOperationException($"Process did not crash within {CommandTimeout} ({resumes} resume(s)).");
     }
 
     /// <summary>
@@ -174,10 +192,53 @@ public sealed class LldbLiveHost : LldbHostBase, ILiveDebuggerHost
         return stack.Contains(method, StringComparison.Ordinal);
     }
 
-    /// <summary>True if a <c>process continue</c> reported the debuggee exiting.</summary>
+    /// <summary>
+    /// True if a <c>process continue</c> reported the debuggee exiting. Covers the normal exit line plus the
+    /// symptoms lldb prints when the inferior died out from under a command under contention (a lost gdb-
+    /// remote connection, or a subsequent command complaining the process is gone) — any of which means the
+    /// debuggee is no longer resumable and we must stop, not keep resuming.
+    /// </summary>
     private static bool HasExited(string continueOutput) =>
         continueOutput.Contains("exited with status", StringComparison.OrdinalIgnoreCase) ||
-        continueOutput.Contains(" exited ", StringComparison.OrdinalIgnoreCase);
+        continueOutput.Contains(" exited ", StringComparison.OrdinalIgnoreCase) ||
+        continueOutput.Contains("lost connection", StringComparison.OrdinalIgnoreCase) ||
+        continueOutput.Contains("process must be launched", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Authoritatively ask lldb whether the debuggee is gone, instead of only scraping the (human-readable,
+    /// and under contention occasionally mis-framed) <c>process continue</c> text. Queries the live
+    /// <c>SBProcess</c> state via the script interpreter and treats the terminal states — invalid,
+    /// unloaded, detached, exited — as dead. Defensive: if the state can't be read/parsed it returns false
+    /// and callers fall back to <see cref="HasExited"/>.
+    /// </summary>
+    private bool ProcessIsDead()
+    {
+        // lldb.eStateType: 0 invalid, 1 unloaded, 2 connected, 3 attaching, 4 launching, 5 stopped,
+        // 6 running, 7 stepping, 8 crashed, 9 detached, 10 exited, 11 suspended.
+        const string Tag = "SOSHARNESS_STATE=";
+        string outp = Execute(
+            $"script print('{Tag}%d' % lldb.debugger.GetSelectedTarget().GetProcess().GetState())").Text;
+
+        int idx = outp.LastIndexOf(Tag, StringComparison.Ordinal);
+        if (idx < 0)
+        {
+            return false; // couldn't determine — let text-based HasExited decide
+        }
+
+        int start = idx + Tag.Length;
+        int end = start;
+        while (end < outp.Length && char.IsDigit(outp[end]))
+        {
+            end++;
+        }
+
+        if (end == start || !int.TryParse(outp.AsSpan(start, end - start), out int state))
+        {
+            return false;
+        }
+
+        return state is 0 or 1 or 9 or 10; // invalid, unloaded, detached, exited
+    }
 
     /// <summary>True if a <c>process continue</c> stopped on a signal (the runtime's abort = a crash).</summary>
     private static bool StoppedOnSignal(string continueOutput) =>
