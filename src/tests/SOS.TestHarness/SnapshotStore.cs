@@ -268,8 +268,12 @@ public static class SnapshotStore
         return dumpKind == DumpKind.Mini ? "1" : "2";
     }
 
-    /// <summary>The <c>dotnet-dump collect --type</c> value for a dump kind: Heap or Mini.</summary>
-    private static string CollectType(DumpKind dumpKind) => dumpKind.ToString();
+    /// <summary>
+    /// The <c>dotnet-dump collect --type</c> value for a dump kind. Single-file self-snapshots use Full
+    /// because reduced dumps require the same unsupported DAC region enumeration as single-file crashes.
+    /// </summary>
+    private static string CollectType(Flavor flavor, DumpKind dumpKind) =>
+        flavor == Flavor.SingleFile ? "Full" : dumpKind.ToString();
 
     private static void SelfCollectCapture(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion)
     {
@@ -286,7 +290,7 @@ public static class SnapshotStore
         // Tell the debuggee's stop-point helper which dotnet-dump to self-collect with (the repo-built one).
         psi.Environment["SOSHARNESS_DOTNET"] = RepoLayout.DotNetExe;
         psi.Environment["SOSHARNESS_DOTNETDUMP_DLL"] = ToolPaths.DotNetDumpDll;
-        psi.Environment["SOSHARNESS_DUMP_TYPE"] = CollectType(dumpKind);
+        psi.Environment["SOSHARNESS_DUMP_TYPE"] = CollectType(flavor, dumpKind);
         ApplyRuntimeRoot(psi, flavor);
         ApplyMacOsDumpConfig(psi);
         ApplyGcType(psi, gcType);
