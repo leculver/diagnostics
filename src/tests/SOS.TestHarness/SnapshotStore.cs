@@ -160,9 +160,9 @@ public static class SnapshotStore
     }
 
     /// <summary>
-    /// Core/SingleFile crash capture: launch the target with the runtime's crash-dump env vars set
-    /// (<c>DOTNET_DbgEnableMiniDump</c> + full dump type) and let it crash. The runtime's createdump
-    /// writes the full dump to the crash stop's path; the process exits non-zero (it crashed), so we
+    /// Core/SingleFile crash capture: launch the target with the runtime's crash-dump env vars set and let
+    /// it crash. The runtime's createdump writes the dump to the crash stop's path; the process exits
+    /// non-zero (it crashed), so we
     /// verify the dump exists rather than the exit code.
     /// </summary>
     private static void CaptureCrashViaCreatedump(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion)
@@ -180,7 +180,7 @@ public static class SnapshotStore
             CreateNoWindow = true,
         };
         psi.Environment["DOTNET_DbgEnableMiniDump"] = "1";
-        psi.Environment["DOTNET_DbgMiniDumpType"] = CreatedumpType(dumpKind);
+        psi.Environment["DOTNET_DbgMiniDumpType"] = CreatedumpType(flavor, dumpKind);
         psi.Environment["DOTNET_DbgMiniDumpName"] = dumpPath;
         psi.Environment["DOTNET_CreateDumpDiagnostics"] = "1";
         ApplyRuntimeRoot(psi, flavor);
@@ -251,8 +251,22 @@ public static class SnapshotStore
         }
     }
 
-    /// <summary>The <c>createdump</c>/<c>DOTNET_DbgMiniDumpType</c> value for a dump kind: Heap=2, Mini=1.</summary>
-    private static string CreatedumpType(DumpKind dumpKind) => dumpKind == DumpKind.Mini ? "1" : "2";
+    /// <summary>
+    /// The <c>createdump</c>/<c>DOTNET_DbgMiniDumpType</c> value for a dump kind: Heap=2, Mini=1, except
+    /// single-file crash dumps which must use Full=4.
+    /// </summary>
+    private static string CreatedumpType(Flavor flavor, DumpKind dumpKind)
+    {
+        if (flavor == Flavor.SingleFile)
+        {
+            // Single-file crash dumps cannot use createdump's reduced dump modes: Heap/Mini require DAC
+            // region enumeration, but the single-file app does not have a loadable DAC beside it. Keep the
+            // test matrix's Heap row, but capture it with the only supported createdump mode.
+            return "4";
+        }
+
+        return dumpKind == DumpKind.Mini ? "1" : "2";
+    }
 
     /// <summary>The <c>dotnet-dump collect --type</c> value for a dump kind: Heap or Mini.</summary>
     private static string CollectType(DumpKind dumpKind) => dumpKind.ToString();
