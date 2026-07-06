@@ -24,7 +24,10 @@ public sealed class ClrThreadsTests
     public static TheoryData<TestConfig> Matrix { get; }
                     // Live opt-in: !clrthreads enumerates the live thread list, so this base test runs
                     // dump AND live as the representative live-thread-enumeration check.
-                    = TestConfig.BuildMatrix([TargetCatalog.NestedException, TargetCatalog.Scenarios], liveness: Liveness.AllValid);
+                    = TestConfig.BuildMatrix(
+                        [TargetCatalog.NestedException, TargetCatalog.Scenarios],
+                        liveness: Liveness.AllValid,
+                        dumpKind: DumpKind.All);
 
     [SosTheory]
     [MemberData(nameof(Matrix))]

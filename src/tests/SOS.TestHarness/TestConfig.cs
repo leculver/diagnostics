@@ -39,7 +39,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
     /// <summary>Which DAC SOS debugs with (Legacy / CDac). cDAC is only valid on .NET 11+ (see <see cref="IsValid"/>).</summary>
     public Dac Dac { get; private set; }
 
-    /// <summary>The dump kind (Full / Mini). Always <see cref="DumpKind.Full"/> for live targets (no dump).</summary>
+    /// <summary>The dump kind (Heap / Mini). Always <see cref="DumpKind.Heap"/> for live targets (no dump).</summary>
     public DumpKind DumpKind { get; private set; }
 
     /// <summary>
@@ -54,7 +54,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
     }
 
     public TestConfig(string target, Host host, Flavor flavor, Liveness liveness,
-                      GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Full, bool publicSymbols = false,
+                      GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Heap, bool publicSymbols = false,
                       CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
     {
         Target = target;
@@ -82,7 +82,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
     /// <para>Axis defaults are deliberate: <paramref name="host"/>/<paramref name="flavor"/> default to
     /// <c>AllValid</c> (full coverage), but <paramref name="liveness"/> defaults to
     /// <see cref="Liveness.Dump"/>, <paramref name="gcType"/> to <see cref="GcType.Workstation"/>, and
-    /// <paramref name="dumpKind"/> to <see cref="DumpKind.Full"/>. Live debugging is slow (a debugger
+    /// <paramref name="dumpKind"/> to <see cref="DumpKind.Heap"/>. Live debugging is slow (a debugger
     /// ptrace-attached to a running process, one session per core) and almost every command behaves
     /// identically against a dump, so live coverage is <em>opt-in</em>: a test that uniquely benefits from a
     /// live process (e.g. a stack walk reading live thread contexts, a live GC heap/root scan) passes
@@ -98,7 +98,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         Host host = Host.AllValid,
         Liveness liveness = Liveness.Dump,
         GcType gcType = GcType.Workstation,
-        DumpKind dumpKind = DumpKind.Full,
+        DumpKind dumpKind = DumpKind.Heap,
         bool publicSymbols = false,
         CoreVersion coreVersion = CoreVersion.All,
         Dac dac = Dac.All)
@@ -123,7 +123,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         Host host = Host.AllValid,
         Liveness liveness = Liveness.Dump,
         GcType gcType = GcType.Workstation,
-        DumpKind dumpKind = DumpKind.Full,
+        DumpKind dumpKind = DumpKind.Heap,
         bool publicSymbols = false,
         CoreVersion coreVersion = CoreVersion.All,
         Dac dac = Dac.All)
@@ -153,7 +153,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
                                         // A live target has no dump, so DumpKind and PublicSymbols don't
                                         // apply. Collapse them to canonical values so we emit one live row,
                                         // not one per (DumpKind) permutation.
-                                        DumpKind dk = l == Liveness.Live ? DumpKind.Full : d;
+                                        DumpKind dk = l == Liveness.Live ? DumpKind.Heap : d;
                                         bool pub = l == Liveness.Live ? false : publicSymbols;
 
                                         TestConfig cfg = new(target, h, f, l, g, dk, pub, cv, da);
@@ -231,9 +231,16 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
             return false;
         }
 
-        // Framework dumps are full user-mode dumps captured by DbgEng; createdump's reduced dump types
-        // don't apply, so Framework supports only Full.
+        // Framework dumps are full user-mode dumps captured by DbgEng; createdump's Mini dump type
+        // doesn't apply, so Framework supports only the default Heap axis value.
         if (c.DumpKind == DumpKind.Mini && c.Flavor == Flavor.Framework)
+        {
+            return false;
+        }
+
+        // Runtime createdump only supports full dumps for single-file apps when it needs the DAC to
+        // enumerate reduced-dump regions. Don't generate Mini rows for single-file targets.
+        if (c.DumpKind == DumpKind.Mini && c.Flavor == Flavor.SingleFile)
         {
             return false;
         }
@@ -326,7 +333,7 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
 
     /// <summary>
     /// A legible, deterministic id used for the theory display name and de-duplication, e.g.
-    /// <c>scenarios/Cdb/Core/net10/Dump/Workstation/Full</c> (the runtime version is always shown; the dump
+    /// <c>scenarios/Cdb/Core/net10/Dump/Workstation/Heap</c> (the runtime version is always shown; the dump
     /// kind is omitted for live rows; a <c>/cdac</c> suffix marks the cDAC variant and <c>/pub</c> the
     /// public-symbol variant). Legacy DAC is the implicit default and isn't tokenized, so single-DAC ids
     /// stay terse.

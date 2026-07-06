@@ -60,7 +60,7 @@ public static class TestHarness
         psi.ArgumentList.Add("-p");
         psi.ArgumentList.Add(Environment.ProcessId.ToString());
         psi.ArgumentList.Add("--type");
-        psi.ArgumentList.Add(Environment.GetEnvironmentVariable("SOSHARNESS_DUMP_TYPE") ?? "Full");
+        psi.ArgumentList.Add(Environment.GetEnvironmentVariable("SOSHARNESS_DUMP_TYPE") ?? "Heap");
         psi.ArgumentList.Add("-o");
         psi.ArgumentList.Add(outPath);
 

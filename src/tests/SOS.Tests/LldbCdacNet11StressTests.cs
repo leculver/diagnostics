@@ -27,7 +27,7 @@ public sealed class LldbCdacNet11StressTests
             Flavor.Core,
             Liveness.Dump,
             GcType.Workstation,
-            DumpKind.Full,
+            DumpKind.Heap,
             publicSymbols: false,
             CoreVersion.Net11,
             Dac.CDac);

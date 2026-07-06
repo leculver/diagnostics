@@ -18,7 +18,8 @@ public sealed class PrintExceptionTests
     /// Hosts.DumpHosts = [cdb, dotnet-dump] || [lldb, dotnet-dump]
     /// Flavors = e.g. [Flavor.Core, Flavor.SingleFile, Flavor.Framework]
     /// </summary>
-    public static TheoryData<TestConfig> Matrix { get; } = TestConfig.BuildMatrix([TargetCatalog.NestedException]);
+    public static TheoryData<TestConfig> Matrix { get; } =
+        TestConfig.BuildMatrix([TargetCatalog.NestedException], dumpKind: DumpKind.All);
 
 
     [SosTheory]
