@@ -51,7 +51,9 @@ public sealed class LldbCliHost : LldbHostBase
         // resolves the DAC for the dump's coreclr build-id from there. This is a *local directory*
         // (no network), so the session stays hermetic. Other flavors find their DAC next to the on-disk
         // runtime and need no override. (cdb does the equivalent via `.cordll -lp`.)
-        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory(_coreVersion) is { Length: > 0 } dacDir)
+        string? dacDir = _dac == Dac.CDac ? ToolPaths.CDacOverrideDirectory : null;
+        dacDir ??= _flavor == Flavor.SingleFile ? ToolPaths.SingleFileDacDirectory(_coreVersion) : null;
+        if (dacDir is { Length: > 0 })
         {
             Run($"setsymbolserver -directory \"{dacDir}\"");
         }

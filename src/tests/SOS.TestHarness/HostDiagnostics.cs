@@ -72,6 +72,7 @@ public sealed class HostDiagnostics
         // Send createdump's own diagnostics to a file rather than the host's stderr, so it neither floods
         // the transcript nor gets tangled with the SOS output we scrape for command framing.
         psi.Environment["DOTNET_CreateDumpLogToFile"] = Path.Combine(s_crashRoot, "createdump.%p.log");
+        psi.Environment["DOTNET_DbgCreateDumpToolPath"] = ToolPaths.CreateDumpPath;
     }
 
     /// <summary>Record the launched process (its command line and pid) so a dump it writes can be found.</summary>

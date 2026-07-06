@@ -23,6 +23,7 @@ public abstract class LldbHostBase : IDebuggerHost, IDiagnosticHost
     private const string ErrorMarker = "<END_COMMAND_ERROR>";
 
     private static readonly string? s_trace = Environment.GetEnvironmentVariable("SOSHARNESS_LLDB_TRACE");
+    private static readonly object s_traceLock = new();
 
     private Process _process = null!;
     private StreamWriter _stdin = null!;
@@ -30,6 +31,7 @@ public abstract class LldbHostBase : IDebuggerHost, IDiagnosticHost
     private Thread _reader = null!;
     private Thread? _stderrReader;
     private HostDiagnostics? _diagnostics;
+    private string? _commandInFlight;
 
     public abstract string Name { get; }
 
@@ -155,16 +157,24 @@ public abstract class LldbHostBase : IDebuggerHost, IDiagnosticHost
     /// </summary>
     protected string Run(string command, TimeSpan timeout)
     {
-        _stdin.WriteLine("runcommand " + command);
-        _stdin.Flush();
-        string outp = DrainToMarker(timeout, command);
-        if (s_trace is { Length: > 0 })
+        _commandInFlight = command;
+        try
         {
-            File.AppendAllText(s_trace,
-                $"\n>>> lldb={ToolPaths.LldbExe}\n>>> plugin={ToolPaths.LldbPluginPath}\n>>> rt={ToolPaths.HostRuntimeDirectory}\n(lldb) runcommand {command}\n{outp}\n");
+            _stdin.WriteLine("runcommand " + command);
+            _stdin.Flush();
+            string outp = DrainToMarker(timeout, command);
+            AppendTrace($"\n>>> lldb={ToolPaths.LldbExe}\n>>> plugin={ToolPaths.LldbPluginPath}\n>>> rt={ToolPaths.HostRuntimeDirectory}\n(lldb) runcommand {command}\n{outp}\n");
+            return outp;
         }
-
-        return outp;
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            AppendTrace($"--- lldb command failed ---{Environment.NewLine}command={command}{Environment.NewLine}{LldbProcessState()}{Environment.NewLine}");
+            throw CreateLldbFailure("lldb command failed", command, ex);
+        }
+        finally
+        {
+            _commandInFlight = null;
+        }
     }
 
     /// <summary>
@@ -179,7 +189,14 @@ public abstract class LldbHostBase : IDebuggerHost, IDiagnosticHost
         {
             if (!_lines.TryTake(out string? line, (int)timeout.TotalMilliseconds, HarnessCancellation.Token))
             {
-                throw new TimeoutException($"lldb did not return output for '{command ?? "<startup>"}' within {timeout}.");
+                if (_lines.IsCompleted || HasExited())
+                {
+                    AppendTrace($"--- lldb stdout closed ---{Environment.NewLine}command={command ?? "<startup>"}{Environment.NewLine}{LldbProcessState()}{Environment.NewLine}");
+                    throw CreateLldbFailure("lldb stdout closed", command, null);
+                }
+
+                AppendTrace($"--- lldb command timed out ---{Environment.NewLine}command={command ?? "<startup>"}{Environment.NewLine}timeout={timeout}{Environment.NewLine}{LldbProcessState()}{Environment.NewLine}");
+                throw CreateLldbFailure("lldb command timed out", command, null);
             }
 
             string trimmed = line.TrimEnd();
@@ -201,11 +218,19 @@ public abstract class LldbHostBase : IDebuggerHost, IDiagnosticHost
 
     private void ReadLoop()
     {
-        string? line;
-        while ((line = _process.StandardOutput.ReadLine()) is not null)
+        try
         {
-            _diagnostics?.AppendStdout(line);
-            _lines.Add(line);
+            string? line;
+            while ((line = _process.StandardOutput.ReadLine()) is not null)
+            {
+                _diagnostics?.AppendStdout(line);
+                _lines.Add(line);
+            }
+        }
+        finally
+        {
+            _lines.CompleteAdding();
+            AppendTrace($"--- lldb stdout eof ---{Environment.NewLine}{LldbProcessState()}{Environment.NewLine}");
         }
     }
 
@@ -222,6 +247,105 @@ public abstract class LldbHostBase : IDebuggerHost, IDiagnosticHost
         catch
         {
             // Best effort: the process may die mid-read. Whatever we captured is still available.
+        }
+    }
+
+    private InvalidOperationException CreateLldbFailure(string phase, string? command, Exception? inner)
+    {
+        StringBuilder sb = new();
+        sb.AppendLine($"phase={phase}");
+        sb.AppendLine(LldbProcessState());
+        sb.AppendLine($"command={command ?? "<startup>"}");
+        sb.AppendLine($"commandInFlight={_commandInFlight ?? "<none>"}");
+        sb.AppendLine($"ToolPaths.LldbExe={ToolPaths.LldbExe}");
+        sb.AppendLine($"ToolPaths.LldbPluginPath={ToolPaths.LldbPluginPath}");
+        sb.AppendLine($"ToolPaths.HostRuntimeDirectory={ToolPaths.HostRuntimeDirectory}");
+        sb.AppendLine($"crashDumpDirectory={HostDiagnostics.CrashDumpDirectory}");
+        sb.AppendLine($"SOSHARNESS_LLDB_TRACE={s_trace ?? "<unset>"}");
+
+        if (_diagnostics is not null)
+        {
+            sb.AppendLine($"commandLine={_diagnostics.CommandLine}");
+            sb.AppendLine("--- lldb stderr tail ---");
+            AppendOrEmpty(sb, _diagnostics.StderrTail());
+            sb.AppendLine("--- lldb stdout tail ---");
+            AppendOrEmpty(sb, _diagnostics.StdoutTail());
+        }
+
+        return new InvalidOperationException(sb.ToString(), inner);
+    }
+
+    private static void AppendOrEmpty(StringBuilder sb, string text)
+    {
+        if (text.Length == 0)
+        {
+            sb.AppendLine("(empty)");
+            return;
+        }
+
+        sb.Append(text);
+        if (!text.EndsWith('\n'))
+        {
+            sb.AppendLine();
+        }
+    }
+
+    private bool HasExited()
+    {
+        try
+        {
+            return _process.HasExited;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private string LldbProcessState()
+    {
+        StringBuilder sb = new();
+        try
+        {
+            sb.AppendLine($"pid={_process.Id}");
+            bool hasExited = _process.HasExited;
+            sb.AppendLine($"hasExited={hasExited}");
+            if (hasExited)
+            {
+                sb.AppendLine($"exitCode={_process.ExitCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"processStateError={ex.GetType().Name}: {ex.Message}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static void AppendTrace(string text)
+    {
+        if (s_trace is not { Length: > 0 })
+        {
+            return;
+        }
+
+        try
+        {
+            string? directory = Path.GetDirectoryName(s_trace);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            lock (s_traceLock)
+            {
+                File.AppendAllText(s_trace, text);
+            }
+        }
+        catch
+        {
+            // Trace output is diagnostic only.
         }
     }
 

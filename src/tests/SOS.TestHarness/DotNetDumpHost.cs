@@ -107,7 +107,9 @@ public sealed class DotNetDumpHost : IDebuggerHost, IDiagnosticHost
         // native directory (a *local directory*, no network) so it resolves the DAC for the dump's
         // coreclr build locally and the session stays hermetic. Mirrors LldbCliHost. Other flavors find
         // their DAC next to the on-disk runtime and need no override.
-        if (_flavor == Flavor.SingleFile && ToolPaths.SingleFileDacDirectory(_coreVersion) is { Length: > 0 } dacDir)
+        string? dacDir = _dac == Dac.CDac ? ToolPaths.CDacOverrideDirectory : null;
+        dacDir ??= _flavor == Flavor.SingleFile ? ToolPaths.SingleFileDacDirectory(_coreVersion) : null;
+        if (dacDir is { Length: > 0 })
         {
             Run($"setsymbolserver -directory \"{dacDir}\"");
         }
@@ -180,11 +182,22 @@ public sealed class DotNetDumpHost : IDebuggerHost, IDiagnosticHost
 
     private void ReadLoop()
     {
-        string? line;
-        while ((line = _process.StandardOutput.ReadLine()) is not null)
+        try
         {
-            _diagnostics?.AppendStdout(line);
-            _lines.Add(line);
+            string? line;
+            while ((line = _process.StandardOutput.ReadLine()) is not null)
+            {
+                _diagnostics?.AppendStdout(line);
+                _lines.Add(line);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            // Best effort: Dispose can race with the reader thread during host teardown.
+        }
+        finally
+        {
+            _lines.CompleteAdding();
         }
     }
 
@@ -224,6 +237,15 @@ public sealed class DotNetDumpHost : IDebuggerHost, IDiagnosticHost
         }
         finally
         {
+            try
+            {
+                _process.WaitForExit(10000);
+            }
+            catch
+            {
+                // best effort
+            }
+
             _process.Dispose();
         }
     }

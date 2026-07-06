@@ -57,6 +57,13 @@ public static class ToolPaths
     public static string HostRuntimeDirectory => s_hostRuntimeDirectory.Value;
 
     /// <summary>
+    /// Full path to the <c>createdump</c> executable the debugger host's hosted .NET runtime can use to
+    /// write a crash dump. NativeAOT components (notably the universal cDAC) may not have a neighboring
+    /// <c>createdump</c>, so the crash-dump environment points explicitly at the one from the host runtime.
+    /// </summary>
+    public static string CreateDumpPath => s_createDumpPath.Value;
+
+    /// <summary>
     /// Directory containing the DAC (<c>mscordaccore.dll</c> / <c>libmscordaccore.so</c> /
     /// <c>libmscordaccore.dylib</c>) that matches the runtime a self-contained single-file debuggee of the
     /// given <paramref name="coreVersion"/> bundles. Self-contained single-file apps carry the runtime
@@ -69,6 +76,14 @@ public static class ToolPaths
     public static string? SingleFileDacDirectory(CoreVersion coreVersion) =>
         s_singleFileDacDirectory.GetOrAdd(coreVersion, ResolveSingleFileDacDirectory);
 
+    /// <summary>
+    /// Optional local directory containing an override universal cDAC
+    /// (<c>libmscordaccore_universal.so</c> / platform equivalent) for cDAC test rows. Defaults to
+    /// <c>artifacts/cdac-override/&lt;Configuration&gt;</c> and can be overridden with
+    /// <c>SOSHARNESS_CDAC_DIR</c>.
+    /// </summary>
+    public static string? CDacOverrideDirectory => s_cdacOverrideDirectory.Value;
+
     // Lazy so each host only resolves the tools it actually needs: the non-Windows lldb/dotnet-dump hosts
     // never touch the Windows-only dbgeng/sos.dll resolvers (which would throw for lack of those payloads),
     // and the Windows cdb host never touches the lldb resolvers.
@@ -78,6 +93,8 @@ public static class ToolPaths
     private static readonly Lazy<string> s_lldbPluginPath = new(ResolveLldbPluginPath);
     private static readonly Lazy<string> s_lldbExe = new(ResolveLldbExe);
     private static readonly Lazy<string> s_hostRuntimeDirectory = new(ResolveHostRuntimeDirectory);
+    private static readonly Lazy<string> s_createDumpPath = new(ResolveCreateDumpPath);
+    private static readonly Lazy<string?> s_cdacOverrideDirectory = new(ResolveCDacOverrideDirectory);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<CoreVersion, string?> s_singleFileDacDirectory = new();
 
     private static string ResolveDbgEngDirectory()
@@ -233,6 +250,19 @@ public static class ToolPaths
             ".dotnet runtime is acquired.");
     }
 
+    private static string ResolveCreateDumpPath()
+    {
+        string exe = OperatingSystem.IsWindows() ? "createdump.exe" : "createdump";
+        string candidate = Path.Combine(HostRuntimeDirectory, exe);
+        if (File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        throw new FileNotFoundException(
+            $"createdump not found at '{candidate}'. Run ./build.sh so the repo's .dotnet runtime is acquired.", candidate);
+    }
+
     private static string? FindOnPath(string fileName)
     {
         string? path = Environment.GetEnvironmentVariable("PATH");
@@ -354,11 +384,25 @@ public static class ToolPaths
         return null;
     }
 
+    private static string? ResolveCDacOverrideDirectory()
+    {
+        string? env = Environment.GetEnvironmentVariable("SOSHARNESS_CDAC_DIR");
+        string directory = string.IsNullOrEmpty(env)
+            ? Path.Combine(RepoLayout.Root, "artifacts", "cdac-override", RepoLayout.ArtifactsConfiguration)
+            : env;
+
+        return File.Exists(Path.Combine(directory, CDacFileName)) ? directory : null;
+    }
+
     /// <summary>The platform-specific DAC module file name: <c>mscordaccore.dll</c> on Windows,
     /// <c>libmscordaccore.dylib</c> on macOS, <c>libmscordaccore.so</c> elsewhere.</summary>
     private static string DacFileName =>
         OperatingSystem.IsWindows() ? "mscordaccore.dll" :
         OperatingSystem.IsMacOS() ? "libmscordaccore.dylib" : "libmscordaccore.so";
+
+    private static string CDacFileName =>
+        OperatingSystem.IsWindows() ? "mscordaccore_universal.dll" :
+        OperatingSystem.IsMacOS() ? "libmscordaccore_universal.dylib" : "libmscordaccore_universal.so";
 
     private static IEnumerable<string> NuGetPackageRoots()
     {

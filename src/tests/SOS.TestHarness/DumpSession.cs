@@ -1,6 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.IO;
+
 namespace SOS.TestHarness;
 
 /// <summary>
@@ -84,11 +86,34 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     /// serializes itself on the slot lock.
     /// </summary>
     public SosOutput Sos(string command) =>
-        _pooled ? _slot!.Run(this, h => h.Sos(command)) : RunGuarded(h => h.Sos(command));
+        RunCommand("SOS", command, h => h.Sos(command));
 
     /// <summary>Run a raw debugger command against this target.</summary>
     public SosOutput Execute(string command) =>
-        _pooled ? _slot!.Run(this, h => h.Execute(command)) : RunGuarded(h => h.Execute(command));
+        RunCommand("Execute", command, h => h.Execute(command));
+
+    private SosOutput RunCommand(string kind, string command, Func<IDebuggerHost, SosOutput> action)
+    {
+        try
+        {
+            return _pooled ? _slot!.Run(this, action) : RunGuarded(action);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException or TimeoutException)
+        {
+            throw new InvalidOperationException(
+                $"Dump session command failed:{Environment.NewLine}" +
+                $"Host={Host}{Environment.NewLine}" +
+                $"Target={TargetName}{Environment.NewLine}" +
+                $"Stop={StopName}{Environment.NewLine}" +
+                $"Flavor={Flavor}{Environment.NewLine}" +
+                $"CoreVersion={CoreVersion}{Environment.NewLine}" +
+                $"Dac={Dac}{Environment.NewLine}" +
+                $"DumpPath={DumpPath}{Environment.NewLine}" +
+                $"CommandKind={kind}{Environment.NewLine}" +
+                $"Command={command}",
+                ex);
+        }
+    }
 
     private SosOutput RunGuarded(Func<IDebuggerHost, SosOutput> action)
     {

@@ -48,7 +48,7 @@ public static class Targets
         TargetDefinition definition = TargetCatalog.Get(config.Target);
 
         // Begin capturing this test's replay timeline (host/flavor/liveness + every command/dump).
-        ReplayContext.Start(config.Target, config.Host, config.Flavor, live);
+        ReplayContext.Start(config, live);
 
         if (live)
         {

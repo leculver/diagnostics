@@ -72,7 +72,9 @@ internal static class ReplayRenderer
         sb.AppendLine("# SOS replay");
         sb.AppendLine($"# test:    {testName}");
         sb.AppendLine($"# result:  {state.Result}");
-        sb.AppendLine($"# host:    {replay.Host}    flavor: {replay.Flavor}    live: {replay.Live}    target: {replay.TargetName}");
+        sb.AppendLine($"# config:  {replay.Config}");
+        sb.AppendLine($"# crash dump dir: {HostDiagnostics.CrashDumpDirectory}");
+        sb.AppendLine($"# lldb trace:     {Environment.GetEnvironmentVariable("SOSHARNESS_LLDB_TRACE") ?? "<unset>"}");
         sb.AppendLine("# ───────────────────────────────────────────────────────────────────────────");
 
         AppendFailure(sb, state);

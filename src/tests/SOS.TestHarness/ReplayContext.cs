@@ -53,17 +53,19 @@ public sealed class ReplayContext
     private readonly List<ReplayStep> _steps = new();
     private readonly HashSet<HostDiagnostics> _hosts = new();
 
-    private ReplayContext(string targetName, Host host, Flavor flavor, bool live)
+    private ReplayContext(TestConfig config, bool live)
     {
-        TargetName = targetName;
-        Host = host;
-        Flavor = flavor;
+        TargetName = config.Target;
+        Host = config.Host;
+        Flavor = config.Flavor;
+        Config = config.ToString();
         Live = live;
     }
 
     public string TargetName { get; }
     public Host Host { get; }
     public Flavor Flavor { get; }
+    public string Config { get; }
     public bool Live { get; }
     public IReadOnlyList<ReplayStep> Steps => _steps;
 
@@ -97,7 +99,7 @@ public sealed class ReplayContext
     /// <c>UniqueID</c>, so it is isolated per test even under cross-class parallelism. No-ops (returns
     /// null) when not running inside a test.
     /// </summary>
-    public static ReplayContext? Start(string targetName, Host host, Flavor flavor, bool live)
+    public static ReplayContext? Start(TestConfig config, bool live)
     {
         string? id = TestContext.Current.Test?.UniqueID;
         if (id is null)
@@ -105,7 +107,7 @@ public sealed class ReplayContext
             return null;
         }
 
-        ReplayContext replay = new(targetName, host, flavor, live);
+        ReplayContext replay = new(config, live);
         s_byTest[id] = replay;
         return replay;
     }
