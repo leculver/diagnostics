@@ -3,6 +3,8 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Xunit.Sdk;
+using Xunit.v3;
 using Xunit;
 
 namespace SOS.Tests;
@@ -10,12 +12,10 @@ namespace SOS.Tests;
 /// <summary>
 /// A <see cref="TheoryAttribute"/> for an SOS test whose matrix is populated only on Windows — for example
 /// a cdb-only matrix (<c>!clru</c>, <c>!dumpstack</c>/<c>!eestack</c>), which <c>TestConfig.IsValid</c>
-/// gates to the Windows-only cdb host. On Linux/macOS that matrix is legitimately empty, so the OS gate
-/// here sets <see cref="FactAttribute.Skip"/> and the theory is skipped <b>before</b> xunit evaluates the
-/// (empty) data set. This lets the cross-platform <see cref="SosTheoryAttribute"/> keep xunit's default
-/// "empty data is a failure" behaviour, so an unexpectedly empty matrix on a supported platform surfaces as
-/// a real failure rather than a silent skip.
+/// gates to the Windows-only cdb host. On Linux/macOS that matrix is legitimately empty, so the attribute
+/// discovers no test cases. On Windows, an unexpectedly empty matrix remains a real failure.
 /// </summary>
+[XunitTestCaseDiscoverer(typeof(WindowsTheoryDiscoverer))]
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class WindowsTheoryAttribute : TheoryAttribute
 {
@@ -24,9 +24,21 @@ public sealed class WindowsTheoryAttribute : TheoryAttribute
         [CallerLineNumber] int sourceLineNumber = -1)
         : base(sourceFilePath, sourceLineNumber)
     {
+    }
+}
+
+public sealed class WindowsTheoryDiscoverer : TheoryDiscoverer
+{
+    public override ValueTask<IReadOnlyCollection<IXunitTestCase>> Discover(
+        ITestFrameworkDiscoveryOptions discoveryOptions,
+        IXunitTestMethod testMethod,
+        IFactAttribute factAttribute)
+    {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            Skip = "Only runs on Windows (the cdb-hosted matrix is empty on this platform).";
+            return ValueTask.FromResult<IReadOnlyCollection<IXunitTestCase>>(Array.Empty<IXunitTestCase>());
         }
+
+        return base.Discover(discoveryOptions, testMethod, factAttribute);
     }
 }

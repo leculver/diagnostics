@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using SOS.TestHarness;
+using System.Net.Http;
 using Xunit;
 
 namespace SOS.Tests;
@@ -11,8 +12,8 @@ namespace SOS.Tests;
 /// <c>!maddress</c> (virtual-address-space breakdown), <c>!findpointersin</c> (GC pointers within a region
 /// kind) and <c>!gctonative</c> (GC objects pointing at native ranges). All three are <b>cdb-only</b> —
 /// dotnet-dump has no memory-region service ("only supported under windbg/cdb") — and need full OS symbols
-/// (<c>ntdll.pdb</c>) to tag the address space, so they run under <see cref="FactRequiresOSSymbolsAttribute"/>
-/// (which sources symbols from the public msdl server and auto-skips where it isn't reachable, e.g. CI).
+/// (<c>ntdll.pdb</c>) to tag the address space, so they run under a Windows-only public-symbol cdb matrix
+/// and skip on Windows only when the public msdl server is not reachable.
 /// <c>!findpointersin</c>/<c>!gctonative</c> have no native export, so under cdb they dispatch through the
 /// managed extension via the <c>!sos</c> prefix.
 ///
@@ -23,15 +24,23 @@ public sealed class NativeAddressSpaceTests
 {
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
 
-    // The OS-symbol Facts run against one fixed configuration: a cdb dump of the Core Scenarios target with
-    // the public-symbol carveout enabled.
-    private static readonly TestConfig s_osSymbolConfig =
-        new(TargetCatalog.Scenarios, Host.Cdb, Flavor.Core, Liveness.Dump, publicSymbols: true);
+    // The OS-symbol theories run against one fixed configuration: a cdb dump of the Core Scenarios target
+    // with the public-symbol carveout enabled. On non-Windows this matrix is empty and WindowsTheory allows
+    // that without producing per-test platform skips.
+    public static TheoryData<TestConfig> OSSymbolMatrix => TestConfig.BuildMatrix(
+        [TargetCatalog.Scenarios],
+        Flavor.Core,
+        Host.Cdb,
+        publicSymbols: true,
+        coreVersion: CoreVersion.Net10);
 
-    [FactRequiresOSSymbols]
-    public async Task MAddress_SummarizesAddressSpace()
+    [WindowsTheory]
+    [MemberData(nameof(OSSymbolMatrix))]
+    public async Task MAddress_SummarizesAddressSpace(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(s_osSymbolConfig);
+        RequireOSSymbolsReachable();
+
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // -summary collapses the per-region rows into a per-kind histogram with a grand total. The CLR
@@ -44,10 +53,13 @@ public sealed class NativeAddressSpaceTests
         summary.AssertContains("[TOTAL]");
     }
 
-    [FactRequiresOSSymbols]
-    public async Task FindPointersIn_ScansRegionForGcPointers()
+    [WindowsTheory]
+    [MemberData(nameof(OSSymbolMatrix))]
+    public async Task FindPointersIn_ScansRegionForGcPointers(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(s_osSymbolConfig);
+        RequireOSSymbolsReachable();
+
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         // Managed-only command -> dispatch via the !sos prefix under cdb. Stack regions always carry GC
@@ -57,10 +69,13 @@ public sealed class NativeAddressSpaceTests
         found.AssertContains("Stack");
     }
 
-    [FactRequiresOSSymbols]
-    public async Task GcToNative_WalksHeapForNativePointers()
+    [WindowsTheory]
+    [MemberData(nameof(OSSymbolMatrix))]
+    public async Task GcToNative_WalksHeapForNativePointers(TestConfig config)
     {
-        using Target target = await Targets.GetTargetAsync(s_osSymbolConfig);
+        RequireOSSymbolsReachable();
+
+        using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         SosOutput result = target.Sos("sos gctonative Stack");
@@ -81,5 +96,33 @@ public sealed class NativeAddressSpaceTests
         ulong marker = target.FindUniqueObject("FieldMarker");
         SosOutput scan = target.Sos($"notreachableinrange {marker:x} {marker + 0x200:x}");
         scan.AssertContains("Calculating live objects");
+    }
+
+    private static void RequireOSSymbolsReachable()
+    {
+        if (!s_msdlReachable.Value)
+        {
+            Assert.Skip("Requires OS symbols (ntdll.pdb) from the public msdl symbol server, which is not " +
+                        "reachable here (e.g. CI with no outbound HTTPS). Runs on a workstation with msdl access.");
+        }
+    }
+
+    private const string MsdlProbeUrl = "https://msdl.microsoft.com/download/symbols/";
+
+    private static readonly Lazy<bool> s_msdlReachable = new(ProbeMsdl, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private static bool ProbeMsdl()
+    {
+        try
+        {
+            using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(5) };
+            using HttpRequestMessage request = new(HttpMethod.Head, MsdlProbeUrl);
+            using HttpResponseMessage response = client.Send(request);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

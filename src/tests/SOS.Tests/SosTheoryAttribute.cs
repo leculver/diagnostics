@@ -8,12 +8,11 @@ namespace SOS.Tests;
 /// <summary>
 /// A <see cref="TheoryAttribute"/> for a cross-platform SOS test — one whose matrix is non-empty on every
 /// platform the suite runs on. Every SOS test sources its data from <c>TestConfig.BuildMatrix</c>, which
-/// filters out configurations that don't apply to the current platform. xunit's default behaviour (an
+/// filters out configurations that don't apply to the current platform. xUnit's default behaviour (an
 /// empty data set is a failure) is kept deliberately: if such a matrix comes back empty it means the test
 /// was misconfigured (or a host regressed), and that should surface as a real failure rather than a silent
-/// skip. Tests whose matrix is intentionally single-platform use a platform-gated attribute instead (for
-/// example <see cref="WindowsTheoryAttribute"/> for cdb-only matrices), which skips via the OS gate before
-/// the empty-data check fires.
+/// skip. Tests whose matrix is intentionally single-platform use a platform-gated attribute instead, for
+/// example <see cref="WindowsTheoryAttribute"/> for cdb-only matrices.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class SosTheoryAttribute : TheoryAttribute
