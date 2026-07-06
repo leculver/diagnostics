@@ -28,8 +28,6 @@ public sealed class ClrStackFrameCountTests
     [MemberData(nameof(Matrix))]
     public async Task ClrStack_FrameCount(TestConfig config)
     {
-        KnownIssues.SkipIfSingleFileNet11CDacStackWalk(config);
-
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToFirstStop();
 

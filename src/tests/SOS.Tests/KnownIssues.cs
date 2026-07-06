@@ -16,25 +16,6 @@ namespace SOS.Tests;
 internal static class KnownIssues
 {
     /// <summary>
-    /// Skip a managed stack-walk assertion on a self-contained <b>single-file</b> <b>net11</b> target when
-    /// debugging through the <b>cDAC</b>. The universal cDAC (<c>mscordaccore_universal.dll</c>) fails to
-    /// start a stack walk on a single-file image (<c>!clrstack</c> prints
-    /// <c>Failed to start stack walk: 80131509</c> — COR_E_INVALIDOPERATION). It is host-independent (cdb
-    /// and dotnet-dump fail identically), cDAC-only (the legacy DAC walks the same dump fine), and
-    /// single-file-only (net11 <em>Core</em> walks fine through the cDAC) — i.e. a dotnet/runtime cDAC
-    /// defect the harness can't work around. See issues.md#clrstack-singlefile-net11-cdac.
-    /// </summary>
-    public static void SkipIfSingleFileNet11CDacStackWalk(TestConfig config)
-    {
-        if (config.Flavor == Flavor.SingleFile && config.CoreVersion == CoreVersion.Net11 && config.Dac == Dac.CDac)
-        {
-            Assert.Skip(
-                "cDAC (mscordaccore_universal) cannot start a stack walk on a self-contained single-file net11 " +
-                "target (0x80131509); see issues.md#clrstack-singlefile-net11-cdac");
-        }
-    }
-
-    /// <summary>
     /// Skip the <c>!clrthreads</c> thread-state decode on <b>net11</b>. A dotnet/runtime regression
     /// (PR <see href="https://github.com/dotnet/runtime/pull/126592">#126592</see> deleted
     /// <c>threadData->state = thread->m_State;</c> from <c>ClrDataAccess::GetThreadData</c>) leaves the

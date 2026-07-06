@@ -138,37 +138,3 @@ how DBI maps a frame's locals for a bundled single-file module. Needs a runtime/
 pass — so the config stays on the radar and we revisit it. `ClrStack_ICorDebug` verifies the ICorDebug
 frames/methods for single-file (those pass), then skips only the locals-value oracle when
 `Flavor == SingleFile`, citing this anchor. Remove the skip once DBI decodes single-file locals.
-
-## clrstack-singlefile-net11-cdac
-
-**Configuration:** any **net11** + **cDAC** + **SingleFile** managed **stack-walk** assertion — first seen
-on `ClrStackLinesTests.ClrStack_SourceLines` for every `{Cdb,DotnetDump}/SingleFile/net11/.../cdac` row,
-but it applies to any test that walks the managed stack (`!clrstack` and friends) on that config.
-
-`!clrstack` fails immediately with `Failed to start stack walk: 80131509` (COR_E_INVALIDOPERATION) instead
-of emitting the `[Child SP, IP, Call Site]` frame table, so the harness's table parse throws.
-
-**Root cause / status (bedrock — dotnet/runtime cDAC defect).** The universal cDAC
-(`mscordaccore_universal.dll`, the reader SOS loads for `runtimes --usecdac true`) cannot start a stack
-walk against a **self-contained single-file** image. Established by isolation:
-
-- **cDAC-only:** the same single-file net11 dump walks fine through the **legacy** DAC on both hosts (only
-  `--usecdac true` fails), so it isn't a harness DAC-path or version-skew problem. (The single-file bundles
-  coreclr `11.0.26.31908` from the runtime pack, and the harness already resolves that matching pack DAC;
-  the shared-runtime `…32005` is a red herring.)
-- **single-file-only:** net11 **Core** walks fine through the cDAC (verified in cdb:
-  `Use CDAC contract reader: True` → `Simple.Main()`), so the stack-walk contract itself works — it only
-  breaks for the single-file layout.
-- **host-independent:** cdb (in-process dbgeng) and dotnet-dump fail *identically*, so the fault is inside
-  the cDAC, below the debugger host.
-- **implementation-specific:** raw cdb driving dbgeng's winext `Microsoft.Diagnostics.DataContractReader`
-  (v9.0.13) *does* walk the same single-file dump — so a cDAC *can* do it; the
-  `mscordaccore_universal.dll` (v11.0.26.32005) build SOS uses cannot.
-
-The fix belongs in dotnet/runtime's universal cDAC (single-file stack-walk contract); the diagnostics
-harness can't work around it.
-
-**Test handling:** **baselined as a visible dynamic skip** (`Assert.Skip`), *not* a silent pass — via
-`KnownIssues.SkipIfSingleFileNet11CDacStackWalk(config)`, called at the top of each affected stack-walk
-test. It skips only the exact `(SingleFile, net11, cDAC)` intersection; legacy, Core, and non-net11 keep
-running. Remove the guard once the runtime cDAC walks single-file stacks.
