@@ -12,14 +12,14 @@ namespace SOS.TestHarness;
 /// <see cref="Flavor.SingleFile"/> crash dumps (the single-file bundle doesn't ship/launch
 /// createdump). Launches the debuggee under dbgeng once and drives it through every stop point:
 /// <see cref="StopKind.Snapshot"/> stops are reached via a managed <c>bpmd</c> breakpoint on the
-/// marker method and dumped with <c>.dump /ma</c>; the <see cref="StopKind.Crash"/> stop is reached
-/// by running to the second-chance exception.
+/// marker method and dumped with dbgeng's <c>.dump</c> command; the <see cref="StopKind.Crash"/> stop is
+/// reached by running to the second-chance exception.
 ///
 /// Holds the dbgeng exclusive lease for the duration so it never collides with a shared cdb host.
 /// </summary>
 public static class DbgEngCapturer
 {
-    public static void Capture(string exePath, TargetDefinition target, string dumpDir)
+    public static void Capture(string exePath, TargetDefinition target, string dumpDir, DumpKind dumpKind)
     {
         using IDisposable lease = HostSlot.DbgEng.AcquireExclusive();
 
@@ -74,7 +74,7 @@ public static class DbgEngCapturer
                     RunToBreak(control, "second-chance crash");
                 }
 
-                Run($".dump /ma \"{dumpPath}\"");
+                Run($".dump /o {DbgEngDumpOption(dumpKind)} \"{dumpPath}\"");
                 if (!File.Exists(dumpPath))
                 {
                     throw new InvalidOperationException($"DbgEng capture failed to write '{dumpPath}'.");
@@ -93,6 +93,13 @@ public static class DbgEngCapturer
             }
         }
     }
+
+    private static string DbgEngDumpOption(DumpKind dumpKind) => dumpKind switch
+    {
+        DumpKind.Heap => "/mw",
+        DumpKind.Mini => "/m",
+        _ => throw new ArgumentOutOfRangeException(nameof(dumpKind), dumpKind, "Unsupported dump kind"),
+    };
 
     private static void RunToBreak(IDebugControl control, string what)
     {

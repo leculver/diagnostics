@@ -231,13 +231,6 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
             return false;
         }
 
-        // Framework dumps are full user-mode dumps captured by DbgEng; createdump's Mini dump type
-        // doesn't apply, so Framework supports only the default Heap axis value.
-        if (c.DumpKind == DumpKind.Mini && c.Flavor == Flavor.Framework)
-        {
-            return false;
-        }
-
         // Runtime createdump only supports full dumps for single-file apps when it needs the DAC to
         // enumerate reduced-dump regions. Don't generate Mini rows for single-file targets.
         if (c.DumpKind == DumpKind.Mini && c.Flavor == Flavor.SingleFile)

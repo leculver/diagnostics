@@ -103,17 +103,15 @@ public static class SnapshotStore
         if (flavor == Flavor.Framework)
         {
             // Desktop: no diagnostics IPC; dbgeng captures both snapshot (bpmd) and crash (second-chance).
-            // Run it out-of-process so a dbgeng crash dies with the child, not the test host. Framework is
-            // constrained to the default DumpKind.Heap axis value (DbgEng full user-mode dump), so
-            // dumpKind isn't plumbed here.
-            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType);
+            // Run it out-of-process so a dbgeng crash dies with the child, not the test host.
+            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType, dumpKind);
         }
         else if (isCrash && flavor == Flavor.SingleFile && OperatingSystem.IsWindows())
         {
             // Self-contained single-file on Windows doesn't ship/launch createdump, so capture its crash
             // with dbgeng like desktop (also out-of-process). On Linux/macOS the bundled runtime's
             // createdump handles single-file crashes, so we fall through to CaptureCrashViaCreatedump.
-            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType);
+            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType, dumpKind);
         }
         else if (isCrash)
         {
@@ -130,7 +128,7 @@ public static class SnapshotStore
     }
 
     /// <summary>Run the Capturer child to produce dumps via in-process dbgeng (desktop, or single-file crash).</summary>
-    private static void CaptureWithDbgEng(string exePath, TargetDefinition target, string dumpDir, GcType gcType)
+    private static void CaptureWithDbgEng(string exePath, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind)
     {
         ProcessStartInfo psi = new(RepoLayout.DotNetExe)
         {
@@ -143,6 +141,7 @@ public static class SnapshotStore
         psi.ArgumentList.Add(exePath);
         psi.ArgumentList.Add(target.Name);
         psi.ArgumentList.Add(dumpDir);
+        psi.ArgumentList.Add(dumpKind.ToString());
 
         // Hermetic, local-only symbols: the Capturer hosts dbgeng+SOS, and the dev's _NT_SYMBOL_PATH may
         // point at the Azure-authed symweb, which crashes SOS host init (loading Azure.Identity's closure).

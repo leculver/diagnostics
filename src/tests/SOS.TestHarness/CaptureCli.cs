@@ -12,24 +12,29 @@ namespace SOS.TestHarness;
 /// </summary>
 public static class CaptureCli
 {
-    /// <summary>Args: <c>&lt;exePath&gt; &lt;targetName&gt; &lt;dumpDir&gt;</c>.</summary>
+    /// <summary>Args: <c>&lt;exePath&gt; &lt;targetName&gt; &lt;dumpDir&gt; &lt;dumpKind&gt;</c>.</summary>
     public static int Run(string[] args)
     {
-        if (args.Length != 3)
+        if (args.Length != 4)
         {
-            Console.Error.WriteLine("usage: Capturer <debuggeeExe> <targetName> <dumpDir>");
+            Console.Error.WriteLine("usage: Capturer <debuggeeExe> <targetName> <dumpDir> <dumpKind>");
             return 2;
         }
 
         string exePath = args[0];
         string targetName = args[1];
         string dumpDir = args[2];
+        if (!Enum.TryParse(args[3], ignoreCase: true, out DumpKind dumpKind))
+        {
+            Console.Error.WriteLine($"Unknown dump kind '{args[3]}'.");
+            return 2;
+        }
 
         try
         {
             TargetDefinition target = TargetCatalog.Get(targetName);
             Directory.CreateDirectory(dumpDir);
-            DbgEngCapturer.Capture(exePath, target, dumpDir);
+            DbgEngCapturer.Capture(exePath, target, dumpDir, dumpKind);
             return 0;
         }
         catch (Exception ex)
