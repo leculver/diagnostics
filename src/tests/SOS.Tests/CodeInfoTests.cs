@@ -16,8 +16,13 @@ public sealed class CodeInfoTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
+    // !ehinfo's clause data comes from per-method debug info the DAC only sees in a Full dump on net8-net10
+    // (present in Heap dumps from net11 on); capture Full there. GcInfo_ReportsEncoding reads GC info that
+    // survives the reduced Heap dump, so it stays on the default Heap Matrix.
+    public static TheoryData<TestConfig> FullDumpMatrix => TestMatrices.FullDumpBeforeNet11([TargetCatalog.Scenarios]);
+
     [SosTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(FullDumpMatrix))]
     public async Task EhInfo_ReportsClauses(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);

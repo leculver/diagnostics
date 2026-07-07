@@ -18,8 +18,13 @@ public sealed class ClrUTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
 
+    // !clru's IL/source-line/EH interleaving relies on per-method debug info the DAC only sees in a Full
+    // dump on net8-net10 (present in Heap dumps from net11 on); capture Full there. AcceptsInstructionPointer
+    // needs none of that, so it stays on the default Heap Matrix.
+    public static TheoryData<TestConfig> FullDumpMatrix => TestMatrices.FullDumpBeforeNet11([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
+
     [WindowsTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(FullDumpMatrix))]
     public async Task ClrU_StructureLinesOffsets(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
@@ -48,7 +53,7 @@ public sealed class ClrUTests
     }
 
     [WindowsTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(FullDumpMatrix))]
     public async Task ClrU_InterleavesGcInfoEhInfoIl(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);

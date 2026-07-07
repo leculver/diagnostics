@@ -9,20 +9,34 @@ namespace SOS.Tests;
 internal static class TestMatrices
 {
     /// <summary>
-    /// Matrix for commands that read JIT'd method locals/parameters (e.g. <c>clrstack -p/-l/-a</c>). On
-    /// .NET 8–10 the reduced Heap dump does not carry the JIT variable/argument debug info that the DAC
-    /// needs to map locals and value-type parameters to their stack slots, so those variables come back
-    /// empty (only reference-typed args that live on the GC heap resolve). The runtime includes that debug
-    /// info in Heap dumps starting with .NET 11, so we capture a Full dump on net8–net10 and stay on the
-    /// default Heap dump everywhere else. Both legacy and cDAC read the info fine once it is present in the
-    /// dump, so this is purely a capture-side (dump contents) workaround, not a DAC difference.
+    /// Wraps <see cref="TestConfig.BuildMatrix"/> for commands whose data is absent from a .NET 8–10 reduced
+    /// Heap dump but present again from .NET 11 on. On net8–net10 the Heap dump omits per-method debug info the
+    /// DAC needs (JIT variable/argument info for <c>clrstack -p/-l/-a</c>; likewise the method debug data behind
+    /// <c>!ehinfo</c>, <c>!ip2md</c> source lines, <c>!clru</c> IL interleaving, gcroot pinned-root reporting,
+    /// and native/managed frame annotation for <c>!dumpstack</c>/<c>!eestack</c>). The runtime includes that
+    /// info in Heap dumps starting with .NET 11, so we capture a Full dump on net8–net10 and stay on the default
+    /// Heap dump everywhere else (net11+, and desktop Framework, which already carries it). Both legacy and cDAC
+    /// read the data fine once it is present, so this is purely a capture-side (dump contents) workaround. Takes
+    /// the same axes as <see cref="TestConfig.BuildMatrix"/> so it is a drop-in replacement.
+    ///
+    /// <para>Only applied on Windows: Linux ELF core Heap dumps already include this debug info on net8-net10, so
+    /// those configs stay on the default Heap dump.</para>
     /// </summary>
-    public static TheoryData<TestConfig> FullDumpForLocalsBeforeNet11(string[] targets)
+    public static TheoryData<TestConfig> FullDumpBeforeNet11(
+        string[] targets,
+        Flavor flavor = Flavor.AllValid,
+        Host host = Host.AllValid,
+        Liveness liveness = Liveness.Dump,
+        GcType gcType = GcType.Workstation,
+        DumpKind dumpKind = DumpKind.Heap,
+        bool publicSymbols = false,
+        CoreVersion coreVersion = CoreVersion.All,
+        Dac dac = Dac.All)
     {
         TheoryData<TestConfig> data = new();
-        foreach (TestConfig config in TestConfig.Permutations(targets))
+        foreach (TestConfig config in TestConfig.Permutations(targets, flavor, host, liveness, gcType, dumpKind, publicSymbols, coreVersion, dac))
         {
-            if (config.CoreVersion is CoreVersion.Net8 or CoreVersion.Net9 or CoreVersion.Net10)
+            if (OperatingSystem.IsWindows() && config.CoreVersion is CoreVersion.Net8 or CoreVersion.Net9 or CoreVersion.Net10)
             {
                 data.Add(config with { DumpKind = DumpKind.Full });
             }
