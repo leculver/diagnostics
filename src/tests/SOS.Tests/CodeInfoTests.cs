@@ -19,7 +19,7 @@ public sealed class CodeInfoTests
     // !ehinfo's clause data comes from per-method debug info the DAC only sees in a Full dump on net8-net10
     // (present in Heap dumps from net11 on); capture Full there. GcInfo_ReportsEncoding reads GC info that
     // survives the reduced Heap dump, so it stays on the default Heap Matrix.
-    public static TheoryData<TestConfig> FullDumpMatrix => TestMatrices.FullDumpBeforeNet11([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> FullDumpMatrix => TestMatrices.FullDumpOnCoreVersions([TargetCatalog.Scenarios], CoreVersion.Net8 | CoreVersion.Net9 | CoreVersion.Net10);
 
     [SosTheory]
     [MemberData(nameof(FullDumpMatrix))]

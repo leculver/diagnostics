@@ -20,6 +20,10 @@ public sealed class SpecializedInspectionTests
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
     public static TheoryData<TestConfig> CoreRuntimeMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile);
 
+    // !threadpool reads native ThreadPool state that a net8 reduced Heap dump doesn't carry (fixed from net9 on);
+    // capture a Full dump for net8 only. net9+ works on the default Heap dump.
+    public static TheoryData<TestConfig> ThreadPoolMatrix => TestMatrices.FullDumpOnCoreVersions([TargetCatalog.Scenarios], CoreVersion.Net8);
+
     [SosTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
     public async Task TimerInfo_ReportsRegisteredTimer(TestConfig config)
@@ -33,7 +37,7 @@ public sealed class SpecializedInspectionTests
     }
 
     [SosTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(ThreadPoolMatrix))]
     public async Task ThreadPool_ReportsWorkerStats(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);

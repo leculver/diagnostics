@@ -158,7 +158,7 @@ public sealed class ClrStackTests
     // the marker, so the parser's handling of the optional (pinned)/(interior) flags and the
     // sometimes-absent type is actually exercised — and so we can assert the SosDataRow always
     // carries Pinned/Interior (defaulting to False when the flag isn't printed).
-    public static TheoryData<TestConfig> GcRootsFlagMatrix { get; } = TestMatrices.FullDumpBeforeNet11([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> GcRootsFlagMatrix { get; } = TestMatrices.FullDumpOnCoreVersions([TargetCatalog.Scenarios], CoreVersion.Net8 | CoreVersion.Net9 | CoreVersion.Net10);
 
     [SosTheory]
     [MemberData(nameof(GcRootsFlagMatrix))]

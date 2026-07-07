@@ -9,21 +9,24 @@ namespace SOS.Tests;
 internal static class TestMatrices
 {
     /// <summary>
-    /// Wraps <see cref="TestConfig.BuildMatrix"/> for commands whose data is absent from a .NET 8–10 reduced
-    /// Heap dump but present again from .NET 11 on. On net8–net10 the Heap dump omits per-method debug info the
-    /// DAC needs (JIT variable/argument info for <c>clrstack -p/-l/-a</c>; likewise the method debug data behind
-    /// <c>!ehinfo</c>, <c>!ip2md</c> source lines, <c>!clru</c> IL interleaving, gcroot pinned-root reporting,
-    /// and native/managed frame annotation for <c>!dumpstack</c>/<c>!eestack</c>). The runtime includes that
-    /// info in Heap dumps starting with .NET 11, so we capture a Full dump on net8–net10 and stay on the default
-    /// Heap dump everywhere else (net11+, and desktop Framework, which already carries it). Both legacy and cDAC
-    /// read the data fine once it is present, so this is purely a capture-side (dump contents) workaround. Takes
-    /// the same axes as <see cref="TestConfig.BuildMatrix"/> so it is a drop-in replacement.
+    /// Wraps <see cref="TestConfig.BuildMatrix"/> for commands whose data is absent from a reduced Heap dump on
+    /// some .NET versions but present on others, capturing a Full dump for the versions named in
+    /// <paramref name="fullDumpVersions"/> and staying on the default Heap dump for the rest. Reduced Heap dumps
+    /// on the affected versions omit per-method debug info the DAC needs — JIT variable/argument info for
+    /// <c>clrstack -p/-l/-a</c>; the method debug data behind <c>!ehinfo</c>, <c>!ip2md</c> source lines,
+    /// <c>!clru</c> IL interleaving, gcroot pinned-root reporting, native/managed frame annotation for
+    /// <c>!dumpstack</c>/<c>!eestack</c>; or the ThreadPool state behind <c>!threadpool</c>. The runtime later
+    /// began including that info in Heap dumps (net8-net10 gaps closed by net11; the <c>!threadpool</c> gap
+    /// closed by net9), and desktop Framework already carries it. Both legacy and cDAC read the data fine once
+    /// it is present, so this is purely a capture-side (dump contents) workaround. Takes the same axes as
+    /// <see cref="TestConfig.BuildMatrix"/> so it is a drop-in replacement.
     ///
-    /// <para>Only applied on Windows: Linux ELF core Heap dumps already include this debug info on net8-net10, so
-    /// those configs stay on the default Heap dump.</para>
+    /// <para>Only applied on Windows: Linux ELF core Heap dumps already include this debug info, so those configs
+    /// stay on the default Heap dump.</para>
     /// </summary>
-    public static TheoryData<TestConfig> FullDumpBeforeNet11(
+    public static TheoryData<TestConfig> FullDumpOnCoreVersions(
         string[] targets,
+        CoreVersion fullDumpVersions,
         Flavor flavor = Flavor.AllValid,
         Host host = Host.AllValid,
         Liveness liveness = Liveness.Dump,
@@ -36,7 +39,7 @@ internal static class TestMatrices
         TheoryData<TestConfig> data = new();
         foreach (TestConfig config in TestConfig.Permutations(targets, flavor, host, liveness, gcType, dumpKind, publicSymbols, coreVersion, dac))
         {
-            if (OperatingSystem.IsWindows() && config.CoreVersion is CoreVersion.Net8 or CoreVersion.Net9 or CoreVersion.Net10)
+            if (OperatingSystem.IsWindows() && (config.CoreVersion & fullDumpVersions) != 0)
             {
                 data.Add(config with { DumpKind = DumpKind.Full });
             }

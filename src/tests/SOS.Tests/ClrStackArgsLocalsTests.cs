@@ -17,11 +17,12 @@ namespace SOS.Tests;
 public sealed class ClrStackArgsLocalsTests
 {
     public static TheoryData<TestConfig> Matrix { get; }
-        = TestMatrices.FullDumpBeforeNet11(
+        = TestMatrices.FullDumpOnCoreVersions(
             [
                 TargetCatalog.DivZero,
                 TargetCatalog.Scenarios,
-            ]);
+            ],
+            CoreVersion.Net8 | CoreVersion.Net9 | CoreVersion.Net10);
 
     [SosTheory]
     [MemberData(nameof(Matrix))]

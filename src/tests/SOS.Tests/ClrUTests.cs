@@ -21,7 +21,7 @@ public sealed class ClrUTests
     // !clru's IL/source-line/EH interleaving relies on per-method debug info the DAC only sees in a Full
     // dump on net8-net10 (present in Heap dumps from net11 on); capture Full there. AcceptsInstructionPointer
     // needs none of that, so it stays on the default Heap Matrix.
-    public static TheoryData<TestConfig> FullDumpMatrix => TestMatrices.FullDumpBeforeNet11([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
+    public static TheoryData<TestConfig> FullDumpMatrix => TestMatrices.FullDumpOnCoreVersions([TargetCatalog.Scenarios], CoreVersion.Net8 | CoreVersion.Net9 | CoreVersion.Net10, Flavor.AllValid, Host.Cdb);
 
     [WindowsTheory]
     [MemberData(nameof(FullDumpMatrix))]

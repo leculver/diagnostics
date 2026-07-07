@@ -15,7 +15,7 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class ObjectInspectionTests
 {
-    public static TheoryData<TestConfig> Matrix => TestMatrices.FullDumpBeforeNet11([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> Matrix => TestMatrices.FullDumpOnCoreVersions([TargetCatalog.Scenarios], CoreVersion.Net8 | CoreVersion.Net9 | CoreVersion.Net10);
 
     public static TheoryData<TestConfig> DumpObjChainMatrix { get; } = BuildDumpObjChainMatrix();
 
