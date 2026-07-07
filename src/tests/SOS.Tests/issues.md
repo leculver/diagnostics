@@ -40,18 +40,30 @@ belt-and-suspenders guard for any explicit bpmd use whose target is crash-based 
 skip (`HarnessSkipException`) for `Host.Lldb` + `Flavor.SingleFile` from both live navigation entry points
 (`GoToStopPointCore` → `RunToBpmd`, and `RunToBreakpoint`).
 
-## cdac-net11-notimpl
+## cdac-enummem-notimpl
 
-**Configuration:** **net11** + **cDAC** + **dotnet-dump** host — `MiscCommandTests.SessionCommands_Execute`.
+**Configuration:** **cDAC** + **dotnet-dump** host — `MiscCommandTests.SessionCommands_Execute`. cDAC only
+exists on net11+, so this is in practice a net11+ row.
 
-Some SOS maintenance commands (`sosflush` / `enummem`) return `E_NOTIMPL` (`0x80004001`, surfaced as
-`ERROR: Unrecognized SOS command`) under the cDAC on net11.
+`enummem` (the `EnumMemoryRegions` maintenance command) returns `E_NOTIMPL` (`0x80004001`, surfaced as
+`ERROR: Unrecognized SOS command`) under the cDAC on the dotnet-dump host.
 
-**Root cause / status:** A cDAC defect on net11 (missing contract implementation), out of scope for the
-harness; baselined pending a runtime/cDAC fix.
+**Root cause / status:** **By design.** The cDAC (a managed contract reader) does not implement the
+memory-region enumeration contract that `!enummem` drives; that command exists to exercise the native DAC's
+`EnumMemoryRegions` dump-writing path, which the cDAC intentionally doesn't reproduce. The native (cdb) host
+services `enummem` through dbgeng itself, so it remains available there — only the dotnet-dump + cDAC
+combination is affected. Not a defect to fix.
 
-**Test handling:** `MiscCommandTests.SessionCommands_Execute` asserts `dbgout`, then returns early before the
-`sosflush`/`enummem` assertions on net11 + cDAC + dotnet-dump (passes, not skipped), pending a runtime/cDAC fix.
+**`sosflush` is NOT affected (and is not skipped).** An earlier note baselined `sosflush` alongside
+`enummem`; that was wrong. The cDAC implements `IXCLRDataProcess::Flush`
+(`dotnet/runtime` `src/native/managed/cdac/.../Legacy/SOSDacImpl.IXCLRDataProcess.cs` — it calls
+`_target.Flush(FlushScope.All)` and propagates to the legacy process, returning `S_OK`), so `!sosflush` runs
+cleanly on every host/DAC including net11 + cDAC. The test asserts it on all configs.
+
+**Test handling:** `MiscCommandTests.SessionCommands_Execute` asserts `dbgout` and `sosflush` on every
+config, then returns early before the `enummem` assertion on cDAC + dotnet-dump (passes, not skipped),
+keyed on the DAC rather than a version since the cDAC is a net11+ concept. This is a permanent by-design
+carve-out, not a pending-fix baseline.
 
 ## clrthreads-net11
 

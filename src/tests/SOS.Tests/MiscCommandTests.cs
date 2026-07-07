@@ -26,15 +26,9 @@ public sealed class MiscCommandTests
         // dbgout toggles internal debug logging and reports the new state.
         target.Sos("dbgout").AssertContains("Debug output logging");
 
-        // .NET 11 baseline: sosflush/enummem return E_NOTIMPL under the cDAC on the dotnet-dump host,
-        // surfaced as "Unrecognized SOS command" (see issues.md#cdac-net11-notimpl). Return early rather
-        // than skipping — the dbgout assertion above has already been verified on this config.
-        if (config.CoreVersion == CoreVersion.Net11 && config.Dac == Dac.CDac && config.Host == Host.DotnetDump)
-        {
-            return;
-        }
-
-        // sosflush and enummem produce no output but must be recognised commands that run cleanly.
+        // sosflush resets SOS's cached state; it produces no output but must run cleanly. The cDAC
+        // implements IXCLRDataProcess::Flush (dotnet/runtime Legacy/SOSDacImpl.IXCLRDataProcess.cs), so this
+        // works on every host/DAC including net11 + cDAC.
         AssertRuns(target.Sos("sosflush"));
 
         // enummem is not surfaced by the lldb SOS plugin; return early rather
@@ -44,6 +38,17 @@ public sealed class MiscCommandTests
             return;
         }
 
+        // enummem (EnumMemoryRegions) is E_NOTIMPL under the cDAC on the dotnet-dump host — by design, the
+        // cDAC doesn't implement the memory-region enumeration contract, surfaced as "Unrecognized SOS
+        // command" (see issues.md#cdac-enummem-notimpl). The native (cdb) host services enummem itself, so
+        // it's only unavailable on dotnet-dump. Return early rather than skipping — sosflush above has
+        // already been verified on this config. cDAC only exists on net11+, so no version check is needed.
+        if (config.Dac == Dac.CDac && config.Host == Host.DotnetDump)
+        {
+            return;
+        }
+
+        // enummem produces no output but must be a recognised command that runs cleanly.
         AssertRuns(target.Sos("enummem"));
     }
 
