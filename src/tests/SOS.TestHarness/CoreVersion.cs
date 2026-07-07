@@ -19,6 +19,13 @@ namespace SOS.TestHarness;
 [Flags]
 public enum CoreVersion : uint
 {
+    /// <summary>
+    /// No .NET Core version. Used for the desktop <see cref="Flavor.Framework"/> flavor, whose runtime is
+    /// desktop .NET Framework (clr.dll), not a .NET Core version — the axis is inert there, so every Framework
+    /// config collapses to this single value instead of fanning out one meaningless row per Core version.
+    /// </summary>
+    None = 0,
+
     /// <summary>.NET 8.</summary>
     Net8 = 1u << 8,
 

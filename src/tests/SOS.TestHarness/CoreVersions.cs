@@ -26,8 +26,12 @@ public static class CoreVersions
     /// </summary>
     public static CoreVersion Available { get; } = ComputeAvailable();
 
-    /// <summary>The <c>net*.0</c> target framework moniker for a single <see cref="CoreVersion"/> bit.</summary>
-    public static string Tfm(CoreVersion version) => $"net{Major(version)}.0";
+    /// <summary>
+    /// The <c>net*.0</c> target framework moniker for a single <see cref="CoreVersion"/> bit, or
+    /// <c>netfx</c> for <see cref="CoreVersion.None"/> (the desktop .NET Framework flavor, which has no Core
+    /// version — used as a stable dump/output folder segment).
+    /// </summary>
+    public static string Tfm(CoreVersion version) => version == CoreVersion.None ? "netfx" : $"net{Major(version)}.0";
 
     /// <summary>The major version number (8, 9, 10, ...) for a single <see cref="CoreVersion"/> bit.</summary>
     public static int Major(CoreVersion version)

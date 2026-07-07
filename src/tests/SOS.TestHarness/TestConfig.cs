@@ -162,7 +162,13 @@ public sealed record TestConfig : IXunitSerializable
                                         DumpKind dk = l == Liveness.Live ? DumpKind.Heap : d;
                                         bool pub = l == Liveness.Live ? false : publicSymbols;
 
-                                        TestConfig cfg = new(target, h, f, l, g, dk, pub, cv, da);
+                                        // Desktop .NET Framework has no .NET Core version — the axis is inert
+                                        // there. Collapse it to CoreVersion.None so every Framework row folds
+                                        // into one (via the seen-set dedup below) instead of fanning out an
+                                        // identical desktop-Framework config per Core version.
+                                        CoreVersion cvEffective = f == Flavor.Framework ? CoreVersion.None : cv;
+
+                                        TestConfig cfg = new(target, h, f, l, g, dk, pub, cvEffective, da);
                                         if (IsValid(cfg) && seen.Add(cfg))
                                         {
                                             yield return cfg;
@@ -339,7 +345,7 @@ public sealed record TestConfig : IXunitSerializable
     /// </summary>
     public override string ToString()
     {
-        string version = "/net" + CoreVersions.Major(CoreVersion);
+        string version = CoreVersion == CoreVersion.None ? "/netfx" : "/net" + CoreVersions.Major(CoreVersion);
         string dump = IsLive ? string.Empty : "/" + DumpKind;
         string dac = Dac == Dac.CDac ? "/cdac" : string.Empty;
         string pub = PublicSymbols ? "/pub" : string.Empty;
