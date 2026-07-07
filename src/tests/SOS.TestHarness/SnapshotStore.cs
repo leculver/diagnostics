@@ -252,12 +252,12 @@ public static class SnapshotStore
     }
 
     /// <summary>
-    /// The <c>createdump</c>/<c>DOTNET_DbgMiniDumpType</c> value for a dump kind: Heap=2, Mini=1, except
-    /// single-file crash dumps which must use Full=4.
+    /// The <c>createdump</c>/<c>DOTNET_DbgMiniDumpType</c> value for a dump kind: Full=4, Heap=2, Mini=1,
+    /// except single-file crash dumps which must use Full=4.
     /// </summary>
     private static string CreatedumpType(Flavor flavor, DumpKind dumpKind)
     {
-        if (flavor == Flavor.SingleFile)
+        if (dumpKind == DumpKind.Full || flavor == Flavor.SingleFile)
         {
             // Single-file crash dumps cannot use createdump's reduced dump modes: Heap/Mini require DAC
             // region enumeration, but the single-file app does not have a loadable DAC beside it. Keep the
@@ -273,7 +273,7 @@ public static class SnapshotStore
     /// because reduced dumps require the same unsupported DAC region enumeration as single-file crashes.
     /// </summary>
     private static string CollectType(Flavor flavor, DumpKind dumpKind) =>
-        flavor == Flavor.SingleFile ? "Full" : dumpKind.ToString();
+        dumpKind == DumpKind.Full || flavor == Flavor.SingleFile ? "Full" : dumpKind.ToString();
 
     private static void SelfCollectCapture(Flavor flavor, TargetDefinition target, string dumpDir, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion)
     {

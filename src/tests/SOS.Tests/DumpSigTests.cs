@@ -15,7 +15,7 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpSigTests
 {
-    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> Matrix => TestMatrices.CoreFrameworkFullDump([TargetCatalog.Scenarios]);
 
     [SosTheory]
     [MemberData(nameof(Matrix))]

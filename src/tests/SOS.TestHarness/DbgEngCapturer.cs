@@ -96,6 +96,7 @@ public static class DbgEngCapturer
 
     private static string DbgEngDumpOption(DumpKind dumpKind) => dumpKind switch
     {
+        DumpKind.Full => "/ma",
         DumpKind.Heap => "/mw",
         DumpKind.Mini => "/m",
         _ => throw new ArgumentOutOfRangeException(nameof(dumpKind), dumpKind, "Unsupported dump kind"),

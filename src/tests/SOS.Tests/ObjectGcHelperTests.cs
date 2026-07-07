@@ -17,6 +17,7 @@ public sealed class ObjectGcHelperTests
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
     public static TheoryData<TestConfig> CoreRuntimeMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile);
     public static TheoryData<TestConfig> DotnetDumpMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.DotnetDump);
+    public static TheoryData<TestConfig> ObjectDataMatrix => TestMatrices.CoreFrameworkFullDump([TargetCatalog.Scenarios]);
 
     // gchandleleaks is a Windows-only SOS command (gated #ifndef FEATURE_PAL); pair the Windows-only cdb
     // host matrix with [WindowsTheory] so off-Windows rows are never generated rather than skipped.
@@ -73,7 +74,7 @@ public sealed class ObjectGcHelperTests
     }
 
     [SosTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(ObjectDataMatrix))]
     public async Task PathTo_TracesReferencePath(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);

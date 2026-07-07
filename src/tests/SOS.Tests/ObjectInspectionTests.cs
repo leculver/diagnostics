@@ -17,16 +17,40 @@ public sealed class ObjectInspectionTests
 {
     public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
 
+    public static TheoryData<TestConfig> DumpObjChainMatrix { get; } = BuildDumpObjChainMatrix();
+
+    public static TheoryData<TestConfig> DumpObjNoFieldsMatrix { get; } = TestMatrices.CoreFrameworkFullDump([TargetCatalog.Scenarios]);
+
     // Live opt-in: !dumpobj reads an object's fields straight from live process memory, so the base
     // dumpobj/dumpmt/dumpmd chain runs dump AND live as the representative live-object-read check. The
     // other inspection methods here (-nofields, ip2md) stay dump-only.
     public static TheoryData<TestConfig> LiveMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], liveness: Liveness.AllValid);
 
+    private static TheoryData<TestConfig> BuildDumpObjChainMatrix()
+    {
+        TheoryData<TestConfig> data = new();
+
+        foreach (TestConfig config in TestConfig.Permutations([TargetCatalog.Scenarios], liveness: Liveness.Live))
+        {
+            data.Add(config);
+        }
+
+        foreach (TestConfig config in TestMatrices.CoreFrameworkFullDumpConfigs([TargetCatalog.Scenarios]))
+        {
+            data.Add(config);
+        }
+
+        return data;
+    }
+
     [SosTheory]
-    [MemberData(nameof(LiveMatrix))]
+    [MemberData(nameof(DumpObjChainMatrix))]
     public async Task DumpObj_Mt_Class_Md_Chain(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
+        // Use Full dumps for the dump half of this object-data chain because the net10 legacy DAC can
+        // crash while servicing dumpobj's optional ComWrappers data query on reduced Heap dumps. Live rows
+        // still exercise live object reads; the rest of the chain is independent of dump reduction.
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         ulong marker = target.FindUniqueObject("ThinLockMarker");
@@ -73,10 +97,14 @@ public sealed class ObjectInspectionTests
     }
 
     [SosTheory]
-    [MemberData(nameof(Matrix))]
+    [MemberData(nameof(DumpObjNoFieldsMatrix))]
     public async Task DumpObj_NoFields_OmitsFieldTable(TestConfig config)
     {
         using Target target = await Targets.GetTargetAsync(config);
+        // Use Full dumps for this object-data test because the net10 legacy DAC can crash while servicing
+        // dumpobj's optional ComWrappers data query on reduced Heap dumps. The command's -nofields behavior
+        // is independent of dump reduction, so keep this test on Full Core/Framework dumps instead of
+        // excluding the failing Core row.
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
         ulong marker = target.FindUniqueObject("FieldMarker");
