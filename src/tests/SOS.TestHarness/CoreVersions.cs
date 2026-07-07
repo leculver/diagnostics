@@ -27,6 +27,21 @@ public static class CoreVersions
     public static CoreVersion Available { get; } = ComputeAvailable();
 
     /// <summary>
+    /// The .NET Core versions past (or nearing) end of support — .NET 8 and .NET 9 both reach EOL in
+    /// November. They are excluded from the default test matrix (see <see cref="TestConfig.Permutations"/>)
+    /// and only run when opted in via <see cref="TestLegacyCore"/> or explicitly named in
+    /// <c>SOSHARNESS_ONLY_COREVERSIONS</c>.
+    /// </summary>
+    public static CoreVersion Legacy => CoreVersion.Net8 | CoreVersion.Net9;
+
+    /// <summary>
+    /// Whether the legacy (net8/net9) versions are opted into the default matrix, via
+    /// <c>SOSHARNESS_TEST_LEGACY_CORE=1</c>. Off by default so a normal run only exercises the in-support
+    /// versions.
+    /// </summary>
+    public static bool TestLegacyCore => Environment.GetEnvironmentVariable("SOSHARNESS_TEST_LEGACY_CORE") == "1";
+
+    /// <summary>
     /// The <c>net*.0</c> target framework moniker for a single <see cref="CoreVersion"/> bit, or
     /// <c>netfx</c> for <see cref="CoreVersion.None"/> (the desktop .NET Framework flavor, which has no Core
     /// version — used as a stable dump/output folder segment).

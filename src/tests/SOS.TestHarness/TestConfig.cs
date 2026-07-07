@@ -97,7 +97,11 @@ public sealed record TestConfig : IXunitSerializable
     ///
     /// <para>Each axis can be narrowed at run time by a comma-separated env allow-list:
     /// <c>SOSHARNESS_ONLY_HOSTS</c>, <c>_FLAVORS</c>, <c>_LIVENESS</c>, <c>_GCTYPE</c>, <c>_DUMPKIND</c>,
-    /// <c>_COREVERSIONS</c> (e.g. <c>Net10,Net11</c>), <c>_DAC</c> (e.g. <c>Legacy</c>).</para></summary>
+    /// <c>_COREVERSIONS</c> (e.g. <c>Net10,Net11</c>), <c>_DAC</c> (e.g. <c>Legacy</c>).</para>
+    ///
+    /// <para>The legacy Core versions (net8/net9, EOL in November) are excluded from the default matrix; set
+    /// <c>SOSHARNESS_TEST_LEGACY_CORE=1</c> to include them, or name them explicitly in
+    /// <c>SOSHARNESS_ONLY_COREVERSIONS</c> (which bypasses the exclusion).</para></summary>
     public static TheoryData<TestConfig> BuildMatrix(
         string[] targets,
         Flavor flavor = Flavor.AllValid,
@@ -139,6 +143,16 @@ public sealed record TestConfig : IXunitSerializable
         // Only ever expand versions the harness actually builds/installs; a requested bit outside the
         // available set is silently dropped (the axis disables, it never positively enables — see CoreVersion).
         CoreVersion requestedVersions = coreVersion & CoreVersions.Available;
+
+        // Net8/Net9 reach end of support in November, so they're out of the DEFAULT matrix — a normal run
+        // only exercises the in-support versions (net10/net11). They still run when opted in via
+        // SOSHARNESS_TEST_LEGACY_CORE=1, or when explicitly named in SOSHARNESS_ONLY_COREVERSIONS (an
+        // explicit request wins — the ONLY-list below is authoritative, so don't pre-trim in that case).
+        bool explicitVersions = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SOSHARNESS_ONLY_COREVERSIONS"));
+        if (!CoreVersions.TestLegacyCore && !explicitVersions)
+        {
+            requestedVersions &= ~CoreVersions.Legacy;
+        }
 
         foreach (string target in targets)
         {
