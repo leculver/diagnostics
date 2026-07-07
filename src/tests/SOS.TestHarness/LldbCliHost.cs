@@ -42,6 +42,11 @@ public sealed class LldbCliHost : LldbHostBase
 
     public override void LoadSos()
     {
+        if (_dac == Dac.CDac)
+        {
+            ToolPaths.EnsureLldbPluginCDacOverride();
+        }
+
         Run($"plugin load \"{ToolPaths.LldbPluginPath}\"");
         Run($"sethostruntime \"{ToolPaths.HostRuntimeDirectory}\"");
 

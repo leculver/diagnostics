@@ -84,6 +84,29 @@ public static class ToolPaths
     /// </summary>
     public static string? CDacOverrideDirectory => s_cdacOverrideDirectory.Value;
 
+    /// <summary>
+    /// Native SOS resolves the universal cDAC from the SOS module directory. Keep the lldb plugin output
+    /// directory aligned with the configured override before cDAC rows load SOS.
+    /// </summary>
+    public static void EnsureLldbPluginCDacOverride()
+    {
+        string? overrideDirectory = CDacOverrideDirectory;
+        if (overrideDirectory is null)
+        {
+            return;
+        }
+
+        string source = Path.Combine(overrideDirectory, CDacFileName);
+        string destination = Path.Combine(Path.GetDirectoryName(LldbPluginPath)!, CDacFileName);
+        lock (s_cdacCopyLock)
+        {
+            if (!File.Exists(destination) || !FilesEqual(source, destination))
+            {
+                File.Copy(source, destination, overwrite: true);
+            }
+        }
+    }
+
     // Lazy so each host only resolves the tools it actually needs: the non-Windows lldb/dotnet-dump hosts
     // never touch the Windows-only dbgeng/sos.dll resolvers (which would throw for lack of those payloads),
     // and the Windows cdb host never touches the lldb resolvers.
@@ -96,6 +119,7 @@ public static class ToolPaths
     private static readonly Lazy<string> s_createDumpPath = new(ResolveCreateDumpPath);
     private static readonly Lazy<string?> s_cdacOverrideDirectory = new(ResolveCDacOverrideDirectory);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<CoreVersion, string?> s_singleFileDacDirectory = new();
+    private static readonly object s_cdacCopyLock = new();
 
     private static string ResolveDbgEngDirectory()
     {
@@ -392,6 +416,29 @@ public static class ToolPaths
             : env;
 
         return File.Exists(Path.Combine(directory, CDacFileName)) ? directory : null;
+    }
+
+    private static bool FilesEqual(string leftPath, string rightPath)
+    {
+        FileInfo leftInfo = new(leftPath);
+        FileInfo rightInfo = new(rightPath);
+        if (leftInfo.Length != rightInfo.Length)
+        {
+            return false;
+        }
+
+        using FileStream left = File.OpenRead(leftPath);
+        using FileStream right = File.OpenRead(rightPath);
+        int leftByte;
+        while ((leftByte = left.ReadByte()) != -1)
+        {
+            if (leftByte != right.ReadByte())
+            {
+                return false;
+            }
+        }
+
+        return right.ReadByte() == -1;
     }
 
     /// <summary>The platform-specific DAC module file name: <c>mscordaccore.dll</c> on Windows,

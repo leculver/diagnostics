@@ -16,37 +16,47 @@ namespace SOS.TestHarness;
 /// id and a legible display name (see <see cref="ToString"/>), and has value equality so
 /// <see cref="BuildMatrix"/> can de-duplicate rows that collapse onto the same configuration.</para>
 /// </summary>
-public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
+public sealed record TestConfig : IXunitSerializable
 {
+    private string _target = string.Empty;
+    private Host _host;
+    private Flavor _flavor;
+    private Liveness _liveness;
+    private GcType _gcType;
+    private CoreVersion _coreVersion;
+    private Dac _dac;
+    private DumpKind _dumpKind;
+    private bool _publicSymbols;
+
     /// <summary>The debuggee target name (e.g. <see cref="TargetCatalog.Scenarios"/>).</summary>
-    public string Target { get; private set; } = string.Empty;
+    public string Target { get => _target; init => _target = value; }
 
     /// <summary>The debugger host (cdb / dotnet-dump / lldb).</summary>
-    public Host Host { get; private set; }
+    public Host Host { get => _host; init => _host = value; }
 
     /// <summary>The runtime flavor (Core / SingleFile / Framework).</summary>
-    public Flavor Flavor { get; private set; }
+    public Flavor Flavor { get => _flavor; init => _flavor = value; }
 
     /// <summary>Live process vs. post-mortem dump.</summary>
-    public Liveness Liveness { get; private set; }
+    public Liveness Liveness { get => _liveness; init => _liveness = value; }
 
     /// <summary>Workstation vs. server GC.</summary>
-    public GcType GcType { get; private set; }
+    public GcType GcType { get => _gcType; init => _gcType = value; }
 
     /// <summary>The .NET Core runtime version the target is built and dumped against (a single flag).</summary>
-    public CoreVersion CoreVersion { get; private set; }
+    public CoreVersion CoreVersion { get => _coreVersion; init => _coreVersion = value; }
 
     /// <summary>Which DAC SOS debugs with (Legacy / CDac). cDAC is only valid on .NET 11+ (see <see cref="IsValid"/>).</summary>
-    public Dac Dac { get; private set; }
+    public Dac Dac { get => _dac; init => _dac = value; }
 
     /// <summary>The dump kind (Heap / Mini). Always <see cref="DumpKind.Heap"/> for live targets (no dump).</summary>
-    public DumpKind DumpKind { get; private set; }
+    public DumpKind DumpKind { get => _dumpKind; init => _dumpKind = value; }
 
     /// <summary>
     /// Opt the (cdb) dump host into the sealed public-msdl symbol path for OS-symbol-dependent commands
     /// (e.g. <c>!maddress</c>). Dump-only; never set for live targets.
     /// </summary>
-    public bool PublicSymbols { get; private set; }
+    public bool PublicSymbols { get => _publicSymbols; init => _publicSymbols = value; }
 
     /// <summary>Parameterless ctor required by <see cref="IXunitSerializable"/>; do not use directly.</summary>
     public TestConfig()
@@ -70,10 +80,6 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
 
     /// <summary>True for a live process target; false for a post-mortem dump.</summary>
     public bool IsLive => Liveness == Liveness.Live;
-
-    /// <summary>Return a copy with <see cref="PublicSymbols"/> set (for the OS-symbol Facts).</summary>
-    public TestConfig WithPublicSymbols(bool value = true) =>
-        new(Target, Host, Flavor, Liveness, GcType, DumpKind, value, CoreVersion, Dac);
 
     /// <summary>
     /// Generate the cross-product of the requested axes as a single-column theory source, filtered to the
@@ -313,15 +319,15 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
 
     void IXunitSerializable.Deserialize(IXunitSerializationInfo info)
     {
-        Target = info.GetValue<string>(nameof(Target))!;
-        Host = info.GetValue<Host>(nameof(Host));
-        Flavor = info.GetValue<Flavor>(nameof(Flavor));
-        Liveness = info.GetValue<Liveness>(nameof(Liveness));
-        GcType = info.GetValue<GcType>(nameof(GcType));
-        DumpKind = info.GetValue<DumpKind>(nameof(DumpKind));
-        PublicSymbols = info.GetValue<bool>(nameof(PublicSymbols));
-        CoreVersion = info.GetValue<CoreVersion>(nameof(CoreVersion));
-        Dac = info.GetValue<Dac>(nameof(Dac));
+        _target = info.GetValue<string>(nameof(Target))!;
+        _host = info.GetValue<Host>(nameof(Host));
+        _flavor = info.GetValue<Flavor>(nameof(Flavor));
+        _liveness = info.GetValue<Liveness>(nameof(Liveness));
+        _gcType = info.GetValue<GcType>(nameof(GcType));
+        _dumpKind = info.GetValue<DumpKind>(nameof(DumpKind));
+        _publicSymbols = info.GetValue<bool>(nameof(PublicSymbols));
+        _coreVersion = info.GetValue<CoreVersion>(nameof(CoreVersion));
+        _dac = info.GetValue<Dac>(nameof(Dac));
     }
 
     /// <summary>
@@ -340,20 +346,4 @@ public sealed class TestConfig : IXunitSerializable, IEquatable<TestConfig>
         return $"{Target}/{Host}/{Flavor}{version}/{Liveness}/{GcType}{dump}{dac}{pub}";
     }
 
-    public bool Equals(TestConfig? other) =>
-        other is not null
-        && Target == other.Target
-        && Host == other.Host
-        && Flavor == other.Flavor
-        && Liveness == other.Liveness
-        && GcType == other.GcType
-        && DumpKind == other.DumpKind
-        && PublicSymbols == other.PublicSymbols
-        && CoreVersion == other.CoreVersion
-        && Dac == other.Dac;
-
-    public override bool Equals(object? obj) => Equals(obj as TestConfig);
-
-    public override int GetHashCode() =>
-        HashCode.Combine(Target, Host, Flavor, Liveness, GcType, DumpKind, PublicSymbols, HashCode.Combine(CoreVersion, Dac));
 }

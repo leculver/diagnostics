@@ -19,7 +19,7 @@ public sealed class ObjectInspectionTests
 
     public static TheoryData<TestConfig> DumpObjChainMatrix { get; } = BuildDumpObjChainMatrix();
 
-    public static TheoryData<TestConfig> DumpObjNoFieldsMatrix { get; } = TestMatrices.CoreFrameworkFullDump([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> DumpObjNoFieldsMatrix { get; } = TestMatrices.CoreFrameworkConditional([TargetCatalog.Scenarios]);
 
     // Live opt-in: !dumpobj reads an object's fields straight from live process memory, so the base
     // dumpobj/dumpmt/dumpmd chain runs dump AND live as the representative live-object-read check. The
@@ -35,7 +35,7 @@ public sealed class ObjectInspectionTests
             data.Add(config);
         }
 
-        foreach (TestConfig config in TestMatrices.CoreFrameworkFullDumpConfigs([TargetCatalog.Scenarios]))
+        foreach (TestConfig config in TestMatrices.CoreFrameworkConditionalFullDumpConfigs([TargetCatalog.Scenarios]))
         {
             data.Add(config);
         }
