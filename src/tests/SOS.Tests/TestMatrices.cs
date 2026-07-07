@@ -8,6 +8,33 @@ namespace SOS.Tests;
 
 internal static class TestMatrices
 {
+    /// <summary>
+    /// Matrix for commands that read JIT'd method locals/parameters (e.g. <c>clrstack -p/-l/-a</c>). On
+    /// .NET 8–10 the reduced Heap dump does not carry the JIT variable/argument debug info that the DAC
+    /// needs to map locals and value-type parameters to their stack slots, so those variables come back
+    /// empty (only reference-typed args that live on the GC heap resolve). The runtime includes that debug
+    /// info in Heap dumps starting with .NET 11, so we capture a Full dump on net8–net10 and stay on the
+    /// default Heap dump everywhere else. Both legacy and cDAC read the info fine once it is present in the
+    /// dump, so this is purely a capture-side (dump contents) workaround, not a DAC difference.
+    /// </summary>
+    public static TheoryData<TestConfig> FullDumpForLocalsBeforeNet11(string[] targets)
+    {
+        TheoryData<TestConfig> data = new();
+        foreach (TestConfig config in TestConfig.Permutations(targets))
+        {
+            if (config.CoreVersion is CoreVersion.Net8 or CoreVersion.Net9 or CoreVersion.Net10)
+            {
+                data.Add(config with { DumpKind = DumpKind.Full });
+            }
+            else
+            {
+                data.Add(config);
+            }
+        }
+
+        return data;
+    }
+
     public static TheoryData<TestConfig> CoreFrameworkConditional(string[] targets)
     {
         TheoryData<TestConfig> data = new();
