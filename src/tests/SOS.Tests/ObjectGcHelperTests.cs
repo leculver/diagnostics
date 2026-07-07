@@ -21,7 +21,14 @@ public sealed class ObjectGcHelperTests
 
     // gchandleleaks is a Windows-only SOS command (gated #ifndef FEATURE_PAL); pair the Windows-only cdb
     // host matrix with [WindowsTheory] so off-Windows rows are never generated rather than skipped.
-    public static TheoryData<TestConfig> CdbMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.AllValid, Host.Cdb);
+    //
+    // Framework (desktop .NET) is excluded on purpose: gchandleleaks brute-force linear-scans the entire
+    // committed virtual address space (dbgeng QueryVirtual/ReadVirtual, an inner O(handles) compare per word).
+    // On a desktop Framework dump that scan is progressing but legitimately exceeds the 2-minute command
+    // timeout (~2m per config, every Framework version — they are the same net48 process), whereas the Core and
+    // SingleFile dumps complete in a few seconds. We keep the fast, representative Core/SingleFile coverage and
+    // drop the pathologically slow Framework rows rather than let the suite carry multi-minute tests.
+    public static TheoryData<TestConfig> CdbMatrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios], Flavor.Core | Flavor.SingleFile, Host.Cdb);
 
     [SosTheory]
     [MemberData(nameof(DotnetDumpMatrix))]
