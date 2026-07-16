@@ -85,6 +85,11 @@ public static class SnapshotStore
 
     private static string CaptureTarget(Flavor flavor, TargetDefinition target, GcType gcType, DumpKind dumpKind, CoreVersion coreVersion)
     {
+        // On Windows, a reduced (Heap/Mini) dump captures the CLR's MEM_MAPPED loader heaps only via
+        // dbghelp's auxiliary DAC provider, which won't load the unsigned local/preview test DACs unless
+        // these registry keys are set. Register them before the first capture (idempotent; no-op elsewhere).
+        DumpGenerationSetup.EnsureConfigured();
+
         string dumpDir = DumpDir(flavor, target.Name, gcType, dumpKind, coreVersion);
         Directory.CreateDirectory(dumpDir);
 
