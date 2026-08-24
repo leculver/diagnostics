@@ -366,8 +366,10 @@ public static class SnapshotStore
         string flavorTag = flavor == Flavor.SingleFile ? $"{flavor}-{tfm}" : flavor.ToString();
         string outDir = Path.Combine(RepoLayout.Scratch, "targets", flavorTag.ToLowerInvariant(), target.Name);
         string exe = Path.Combine(outDir, target.Project + RepoLayout.ExeSuffix);
+        string runtimeVersionFile = Path.Combine(outDir, "runtime.version");
+        DateTime sourceWriteTime = NewestSourceWriteTime(project);
 
-        if (IsUpToDate(exe, NewestSourceWriteTime(project)))
+        if (IsFlavorUpToDate(flavor, coreVersion, exe, runtimeVersionFile, sourceWriteTime))
         {
             return exe;
         }
@@ -391,9 +393,13 @@ public static class SnapshotStore
         // per project.
         lock (BuildLockFor(project))
         {
-            if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
+            if (!IsFlavorUpToDate(flavor, coreVersion, exe, runtimeVersionFile, sourceWriteTime))
             {
                 RunToCompletion(RepoLayout.DotnetTestExe, args);
+                if (flavor == Flavor.SingleFile)
+                {
+                    File.WriteAllText(runtimeVersionFile, CoreVersions.RuntimeVersion(coreVersion) ?? string.Empty);
+                }
             }
         }
 
@@ -403,6 +409,29 @@ public static class SnapshotStore
         }
 
         return exe;
+    }
+
+    private static bool IsFlavorUpToDate(
+        Flavor flavor,
+        CoreVersion coreVersion,
+        string exe,
+        string runtimeVersionFile,
+        DateTime sourceWriteTime)
+    {
+        if (!IsUpToDate(exe, sourceWriteTime))
+        {
+            return false;
+        }
+
+        if (flavor != Flavor.SingleFile)
+        {
+            return true;
+        }
+
+        string? expected = CoreVersions.RuntimeVersion(coreVersion);
+        return expected is not null &&
+            File.Exists(runtimeVersionFile) &&
+            string.Equals(File.ReadAllText(runtimeVersionFile).Trim(), expected, StringComparison.Ordinal);
     }
 
     private static readonly ConcurrentDictionary<string, object> s_projectBuildLocks = new(StringComparer.OrdinalIgnoreCase);

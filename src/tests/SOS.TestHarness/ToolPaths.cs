@@ -70,8 +70,8 @@ public static class ToolPaths
     /// inside the exe, so a native debugger can't find the DAC next to a runtime on disk and (hermetically)
     /// can't download it. The cdb host loads it explicitly via <c>.cordll -lp</c>; the lldb host adds it as a
     /// local symbol-store directory via <c>setsymbolserver -directory</c>. The version is the runtime patch
-    /// the single-file publish resolved against (from the install manifest, or the highest patch of that
-    /// major present in the pack cache). Returns <c>null</c> if it can't be located.
+    /// the single-file publish resolved against (from the install manifest and test runtime installation,
+    /// or the matching runtime pack cache). Returns <c>null</c> if it can't be located.
     /// </summary>
     public static string? SingleFileDacDirectory(CoreVersion coreVersion) =>
         s_singleFileDacDirectory.GetOrAdd(coreVersion, ResolveSingleFileDacDirectory);
@@ -366,10 +366,21 @@ public static class ToolPaths
         int major = CoreVersions.Major(coreVersion);
 
         // Preferred: the exact runtime version the single-file publish resolved against (what the install
-        // manifest recorded for this framework), read straight from the test install.
+        // manifest recorded for this framework), read straight from the test runtime installation. The
+        // corresponding runtime pack is not necessarily restored into the user's NuGet cache.
         string? pinned = CoreVersions.RuntimeVersion(coreVersion);
         if (!string.IsNullOrEmpty(pinned))
         {
+            string sharedRuntime = Path.Combine(
+                RepoLayout.DotnetTestRoot,
+                "shared",
+                "Microsoft.NETCore.App",
+                pinned!);
+            if (File.Exists(Path.Combine(sharedRuntime, dacFileName)))
+            {
+                return sharedRuntime;
+            }
+
             foreach (string root in NuGetPackageRoots())
             {
                 string native = Path.Combine(root, packId, pinned!, relativeNative);
