@@ -3,6 +3,7 @@
 
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using SOS.TestHarness;
 using Xunit;
@@ -18,13 +19,20 @@ namespace SOS.Tests;
 /// Assembly-wide after-test hook: when a test fails, write a "replay" artifact capturing how to
 /// reproduce it by hand — the host/flavor/liveness, the dump file(s), and the ordered SOS/debugger
 /// commands the test ran (captured automatically in the <c>using Target</c> window). The artifact is
-/// both attached to the test result (<see cref="ITestContext.AddAttachment"/>, so IDEs/CI surface it)
-/// and dropped under <c>artifacts/replays/</c> for direct use. Tests need no changes: capture is
-/// automatic and failure detection rides on <see cref="ITestContext.TestState"/>, which is populated
-/// by the time <see cref="After"/> runs.
+/// dropped under a per-run directory in <c>artifacts/TestResults/SOS.Tests/</c>, where CI artifact
+/// collection can preserve it. Tests need no changes: capture is automatic and failure detection
+/// rides on <see cref="ITestContext.TestState"/>, which is populated by the time
+/// <see cref="After"/> runs.
 /// </summary>
 public sealed class SosReplayAttribute : BeforeAfterTestAttribute
 {
+    private static readonly string s_runDirectory = Path.Combine(
+        RepoLayout.Root,
+        "artifacts",
+        "TestResults",
+        "SOS.Tests",
+        $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Environment.ProcessId}");
+
     public override void After(MethodInfo methodUnderTest, IXunitTest test)
     {
         // Always take (and remove) this test's capture, pass or fail, so the table stays bounded.
@@ -43,13 +51,10 @@ public sealed class SosReplayAttribute : BeforeAfterTestAttribute
 
         string content = ReplayRenderer.Render(test.TestDisplayName, ctx.TestState, replay);
 
-        ctx.AddAttachment("sos-replay", content);
-
         try
         {
-            string dir = Path.Combine(RepoLayout.Root, "artifacts", "replays");
-            Directory.CreateDirectory(dir);
-            string path = Path.Combine(dir, ReplayRenderer.FileName(test.TestDisplayName));
+            Directory.CreateDirectory(s_runDirectory);
+            string path = Path.Combine(s_runDirectory, ReplayRenderer.FileName(test.TestDisplayName));
             File.WriteAllText(path, content);
             ctx.TestOutputHelper?.WriteLine($"SOS replay written to: {path}");
         }
@@ -235,7 +240,8 @@ internal static class ReplayRenderer
             safe = safe[..150];
         }
 
-        return safe + ".replay.txt";
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(testName)))[..12];
+        return $"{safe}_{hash}.replay.txt";
     }
 
     private static string OneLine(string? s) => (s ?? string.Empty).Replace("\r", " ").Replace("\n", " ");
