@@ -17,7 +17,7 @@ namespace SOS.Tests;
 public sealed class ClrStackFullTests
 {
     public static TheoryData<TestConfig> Matrix { get; }
-        = TestConfig.BuildMatrix(
+        = TestMatrices.StackWalk(
             [
                 TargetCatalog.SimpleThrow,
                 TargetCatalog.DivZero,

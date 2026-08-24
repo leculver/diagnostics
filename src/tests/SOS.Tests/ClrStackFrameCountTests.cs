@@ -16,7 +16,7 @@ namespace SOS.Tests;
 public sealed class ClrStackFrameCountTests
 {
     public static TheoryData<TestConfig> Matrix { get; }
-        = TestConfig.BuildMatrix(
+        = TestMatrices.StackWalk(
             [
                 TargetCatalog.DivZero,
                 TargetCatalog.NestedException,

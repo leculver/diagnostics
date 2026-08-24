@@ -18,7 +18,7 @@ public sealed class ClrStackAllThreadsTests
 {
     private const int ExpectedWorkers = 3;
 
-    public static TheoryData<TestConfig> Matrix { get; } = TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> Matrix { get; } = TestMatrices.StackWalk([TargetCatalog.Scenarios]);
 
     [SosTheory]
     [MemberData(nameof(Matrix))]

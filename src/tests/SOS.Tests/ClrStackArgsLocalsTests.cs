@@ -17,7 +17,7 @@ namespace SOS.Tests;
 public sealed class ClrStackArgsLocalsTests
 {
     public static TheoryData<TestConfig> Matrix { get; }
-        = TestMatrices.FullDumpOnCoreVersions(
+        = TestMatrices.StackWalkFullDumpOnCoreVersions(
             [
                 TargetCatalog.DivZero,
                 TargetCatalog.Scenarios,

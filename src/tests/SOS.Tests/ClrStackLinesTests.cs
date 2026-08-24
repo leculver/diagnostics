@@ -40,7 +40,7 @@ public sealed class ClrStackLinesTests
     };
 
     public static TheoryData<TestConfig> Matrix { get; }
-        = TestConfig.BuildMatrix(
+        = TestMatrices.StackWalk(
             [
                 TargetCatalog.SimpleThrow,
                 TargetCatalog.LineNums,
