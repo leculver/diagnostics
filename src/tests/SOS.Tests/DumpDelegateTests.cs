@@ -14,7 +14,24 @@ namespace SOS.Tests;
 /// </summary>
 public sealed class DumpDelegateTests
 {
-    public static TheoryData<TestConfig> Matrix => TestConfig.BuildMatrix([TargetCatalog.Scenarios]);
+    public static TheoryData<TestConfig> Matrix
+    {
+        get
+        {
+            TheoryData<TestConfig> data = new();
+            foreach (TestConfig config in TestConfig.Permutations([TargetCatalog.Scenarios]))
+            {
+                // .NET 11 single-file delegate method pointers are app-local stubs that the DAC cannot
+                // map back to a MethodDesc, so dumpdelegate correctly has no resolvable method row.
+                if (config.Flavor != Flavor.SingleFile || config.CoreVersion != CoreVersion.Net11)
+                {
+                    data.Add(config);
+                }
+            }
+
+            return data;
+        }
+    }
 
     [SosTheory]
     [MemberData(nameof(Matrix))]
