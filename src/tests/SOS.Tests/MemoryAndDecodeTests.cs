@@ -40,8 +40,6 @@ public sealed class MemoryAndDecodeTests
     [MemberData(nameof(ScenariosMatrix))]
     public async Task ThreadState_DecodesStateFlags(TestConfig config)
     {
-        KnownIssues.SkipIfThreadStateNet11(config);
-
         using Target target = await Targets.GetTargetAsync(config);
         target.GoToStopPoint(TargetCatalog.StopHeap);
 
@@ -51,7 +49,7 @@ public sealed class MemoryAndDecodeTests
 
         // Every thread in our test apps has at least one ThreadState bit set (e.g. TS_FullyInitialized,
         // and TS_Background on the finalizer/threadpool threads), so the state is never 0. A 0 here means
-        // the DAC stopped populating DacpThreadData::state (see issues.md#clrthreads-net11).
+        // the DAC stopped populating DacpThreadData::state.
         uint stateValue = uint.Parse(state.Groups[1].Value, System.Globalization.NumberStyles.HexNumber);
         Assert.NotEqual(0u, stateValue);
 
