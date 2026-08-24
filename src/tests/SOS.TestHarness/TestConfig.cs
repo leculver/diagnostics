@@ -287,6 +287,15 @@ public sealed record TestConfig : IXunitSerializable
             return false;
         }
 
+        // The universal cDAC can identify a single-file runtime and inspect its GC heap, but it cannot
+        // currently expose the managed execution metadata that SOS commands require (AppDomain/module
+        // details, MethodDescs, exception stack traces, or stack walks). Keep cDAC coverage on Core,
+        // where the full command surface is supported, and test SingleFile with its matching legacy DAC.
+        if (c.Dac == Dac.CDac && c.Flavor == Flavor.SingleFile)
+        {
+            return false;
+        }
+
         return true;
     }
 
