@@ -50,6 +50,7 @@ public static class SnapshotStore
 
     // The out-of-process dbgeng engine host, located/built once.
     private static readonly Lazy<string> s_engineHostDll = new(() => SubprocessDll("SOS.TestHarness.EngineHost"));
+    private static readonly object s_subprocessBuildLock = new();
 
     /// <summary>Path to the built EngineHost.dll (the subprocess dbgeng backend), produced on first use.</summary>
     public static string EngineHostDll => s_engineHostDll.Value;
@@ -443,7 +444,10 @@ public static class SnapshotStore
         string dll = Path.Combine(RepoLayout.ArtifactsBin, name, RepoLayout.ArtifactsConfiguration, "net10.0", RepoLayout.Rid, name + ".dll");
         string project = Path.Combine(RepoLayout.Root, "src", "tests", name, name + ".csproj");
 
-        lock (BuildLockFor(project))
+        // Both helper projects reference SOS.TestHarness and can be initialized concurrently by
+        // different test rows. Serialize their one-time incremental builds so their MSBuild nodes
+        // do not write the shared harness intermediate assembly at the same time.
+        lock (s_subprocessBuildLock)
         {
             RunToCompletion(RepoLayout.DotNetExe, $"build \"{project}\" -c {RepoLayout.ArtifactsConfiguration}");
         }
