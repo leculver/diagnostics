@@ -48,6 +48,18 @@ public sealed class GcWhereTests
     [MemberData(nameof(LiveMatrix))]
     public async Task GcWhere_Moves(TestConfig config)
     {
+        if (config.Host == Host.Cdb && config.Liveness == Liveness.Live)
+        {
+            // cdb-sos 10.0.26100.1 corrupts execution when a second pending bpmd breakpoint is
+            // resolved in one session. Each run is deterministic, so use one target per generation.
+            for (int gen = 0; gen <= 2; gen++)
+            {
+                using Target generationTarget = await Targets.GetTargetAsync(config);
+                CheckGeneration(generationTarget, gen);
+            }
+            return;
+        }
+
         using Target target = await Targets.GetTargetAsync(config);
 
         CheckGeneration(target, 0);
