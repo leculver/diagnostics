@@ -322,14 +322,18 @@ public static class SnapshotStore
         _ => throw new ArgumentOutOfRangeException(nameof(flavor)),
     };
 
-    /// <summary>Consume the repo-built Core debuggee for the requested version; build the single project on
-    /// demand if it's absent or older than the debuggee source (so a local debuggee edit is picked up).</summary>
+    /// <summary>Consume the repo-built Core debuggee for the requested version; rebuild the single project
+    /// on demand if it's absent, older than the debuggee source, or was built for a different installed
+    /// runtime version.</summary>
     private static string AcquireCore(TargetDefinition target, CoreVersion coreVersion)
     {
         string tfm = CoreVersions.Tfm(coreVersion);
-        string exe = Path.Combine(RepoLayout.CoreDebuggeeDir(target.Project, tfm), target.Project + RepoLayout.ExeSuffix);
+        string outDir = RepoLayout.CoreDebuggeeDir(target.Project, tfm);
+        string exe = Path.Combine(outDir, target.Project + RepoLayout.ExeSuffix);
+        string runtimeVersionFile = Path.Combine(outDir, "runtime.version");
         string project = RepoLayout.DebuggeeProject(target.Project);
-        if (IsUpToDate(exe, NewestSourceWriteTime(project)))
+        DateTime sourceWriteTime = NewestSourceWriteTime(project);
+        if (IsCoreUpToDate(coreVersion, exe, runtimeVersionFile, sourceWriteTime))
         {
             return exe;
         }
@@ -339,10 +343,11 @@ public static class SnapshotStore
         // one csproj share its obj/ and project.assets.json, so concurrent restores would corrupt each other.
         lock (BuildLockFor(project))
         {
-            if (!IsUpToDate(exe, NewestSourceWriteTime(project)))
+            if (!IsCoreUpToDate(coreVersion, exe, runtimeVersionFile, sourceWriteTime))
             {
                 RunToCompletion(RepoLayout.DotnetTestExe,
-                    $"build \"{project}\" -p:BuildProjectFramework={tfm} -c {RepoLayout.ArtifactsConfiguration}");
+                    $"build \"{project}\" -t:Rebuild -p:BuildProjectFramework={tfm} -c {RepoLayout.ArtifactsConfiguration}");
+                File.WriteAllText(runtimeVersionFile, CoreVersions.RuntimeVersion(coreVersion) ?? string.Empty);
             }
         }
 
@@ -352,6 +357,19 @@ public static class SnapshotStore
         }
 
         return exe;
+    }
+
+    private static bool IsCoreUpToDate(
+        CoreVersion coreVersion,
+        string exe,
+        string runtimeVersionFile,
+        DateTime sourceWriteTime)
+    {
+        string? expected = CoreVersions.RuntimeVersion(coreVersion);
+        return expected is not null &&
+            IsUpToDate(exe, sourceWriteTime) &&
+            File.Exists(runtimeVersionFile) &&
+            string.Equals(File.ReadAllText(runtimeVersionFile).Trim(), expected, StringComparison.Ordinal);
     }
 
     /// <summary>Build (Framework) or publish (SingleFile) the repo debuggee csproj into the scratch tree,
