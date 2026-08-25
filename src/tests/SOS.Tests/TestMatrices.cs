@@ -71,12 +71,11 @@ internal static class TestMatrices
         Liveness liveness = Liveness.Dump,
         GcType gcType = GcType.Workstation,
         DumpKind dumpKind = DumpKind.Heap,
-        bool publicSymbols = false,
         CoreVersion coreVersion = CoreVersion.All,
         Dac dac = Dac.All)
     {
         TheoryData<TestConfig> data = new();
-        foreach (TestConfig config in TestConfig.Permutations(targets, flavor, host, liveness, gcType, dumpKind, publicSymbols, coreVersion, dac))
+        foreach (TestConfig config in TestConfig.Permutations(targets, flavor, host, liveness, gcType, dumpKind, coreVersion, dac))
         {
             if (OperatingSystem.IsWindows() && (config.CoreVersion & fullDumpVersions) != 0)
             {

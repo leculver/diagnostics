@@ -11,8 +11,8 @@ using Microsoft.Win32;
 namespace SOS.TestHarness;
 
 /// <summary>
-/// Verifies the Windows machine prerequisite for capturing a reduced (Heap/Mini) .NET Core dump of an
-/// <b>unsigned</b> test runtime, and fails loudly (with a pointer to the fix) when it is missing.
+/// Handles the Windows machine prerequisite for capturing a reduced (Heap/Mini) .NET Core dump of an
+/// <b>unsigned</b> test runtime.
 ///
 /// <para><b>Why the prerequisite exists.</b> On Windows a reduced dump is written by <c>createdump</c> via
 /// <c>MiniDumpWriteDump</c>, which only captures <c>MEM_PRIVATE</c> read/write pages directly. The CLR's
@@ -28,11 +28,9 @@ namespace SOS.TestHarness;
 /// signed DAC; desktop Framework and single-file/Full captures do not use this path.)</para>
 ///
 /// <para><b>Why we only check, never set.</b> That value lives under <c>HKLM</c>, so writing it requires
-/// elevation — and the tests are not expected to run as administrator. Setting it is a one-time, explicit
-/// developer/CI step performed by <c>eng\DisableSignatureCheck.ps1</c> (with <c>-Restore</c> to undo). This
-/// type therefore reads the value (once, cached) and, if a capture that depends on it is attempted while it
-/// is unset, throws a clear failure pointing at that script rather than producing a silently-incomplete
-/// dump. It never modifies the registry.</para>
+/// elevation and changes machine-wide state. When it is absent, Heap requests are captured as Full dumps,
+/// which preserve the required data without changing the machine. Mini rows are skipped because substituting
+/// a Full dump would not test Mini-dump behavior.</para>
 /// </summary>
 internal static class DumpGenerationRequirements
 {
@@ -44,38 +42,37 @@ internal static class DumpGenerationRequirements
     private static readonly Lazy<bool> s_signatureCheckDisabled = new(ReadSignatureCheckDisabled);
 
     /// <summary>
-    /// Throws when a capture that needs the aux-DAC-provider signature-check bypass is about to run on
-    /// Windows while the bypass is not enabled. Only a <b>reduced</b> (Heap/Mini) <b>Core</b> dump goes
+    /// Resolves the dump kind that can be captured on this machine. Only a <b>reduced</b> (Heap/Mini)
+    /// <b>Core</b> dump goes
     /// through that path: Full dumps capture all memory directly, single-file snapshots are always collected
     /// Full, and desktop Framework is captured via dbgeng using the signed in-box DAC — none of those need
-    /// the bypass, so this is a no-op for them (and on non-Windows).
+    /// the bypass, so their requested kind is returned unchanged (as it is on non-Windows).
     /// </summary>
-    internal static void EnsureAvailableFor(Flavor flavor, DumpKind dumpKind)
+    internal static DumpKind ResolveCaptureKind(Flavor flavor, DumpKind dumpKind)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return;
+            return dumpKind;
         }
 
         if (dumpKind == DumpKind.Full || flavor == Flavor.Framework || flavor == Flavor.SingleFile)
         {
-            return;
+            return dumpKind;
         }
 
         if (s_signatureCheckDisabled.Value)
         {
-            return;
+            return dumpKind;
         }
 
-        throw new InvalidOperationException(
-            $"Cannot capture a reduced ({dumpKind}) .NET Core dump: the machine registry value " +
-            $@"'HKLM\{s_settingsNode}\{DisableCheckValue}' is not set to 1. Without it dbghelp will not load " +
-            "the unsigned test DAC, so the dump is missing the CLR loader heaps and every SOS/ClrMD " +
-            "module/type/heap command fails with 'Unable to create a ClrHeap …'. This value requires " +
-            "administrator rights to set, so the tests do not set it themselves. Enable it once from an " +
-            @"elevated PowerShell by running 'eng\DisableSignatureCheck.ps1 -RepoRoot " + RepoLayout.Root +
-            @"' (and 'eng\DisableSignatureCheck.ps1 -Restore -RepoRoot " + RepoLayout.Root + "' to undo). " +
-            "See documentation/privatebuildtesting.md.");
+        if (dumpKind == DumpKind.Mini)
+        {
+            HarnessSkipException.Now(
+                $@"Mini dump capture requires HKLM\{s_settingsNode}\{DisableCheckValue}=1 so dbghelp can " +
+                "load the unsigned test DAC");
+        }
+
+        return DumpKind.Full;
     }
 
     private static bool ReadSignatureCheckDisabled()

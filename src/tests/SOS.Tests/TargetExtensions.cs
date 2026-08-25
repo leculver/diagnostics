@@ -594,7 +594,7 @@ internal static partial class TargetExtensions
 
     [GeneratedRegex(@"(\w+)=([0-9a-f]+)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex RegisterValue();
-    
+
     [GeneratedRegex(@"^(?<function>.+?)(?:\s\[(?<path>.+)\s@\s(?<line>\d+)\])?$", RegexOptions.Compiled)]
     private static partial Regex CallsiteRegex();
 

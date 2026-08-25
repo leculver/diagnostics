@@ -123,8 +123,7 @@ public sealed class LiveTarget : Target
     /// symbol to place that breakpoint on and the debuggee simply runs past every managed stop point. The
     /// .NET Core flavor keeps CoreCLR as a distinct <c>libcoreclr.so</c> module, so the same notification
     /// breakpoint resolves there. This applies uniformly to every live, single-file, lldb test that
-    /// navigates via a managed stop point, so it is enforced here rather than per test. See
-    /// issues.md#bpmd-singlefile-live-lldb.
+    /// navigates via a managed stop point, so it is enforced here rather than per test.
     /// </summary>
     private void SkipIfLiveBpmdUnsupported()
     {
@@ -132,7 +131,7 @@ public sealed class LiveTarget : Target
         {
             HarnessSkipException.Now(
                 "live bpmd cannot bind in a single-file image under lldb (CoreCLR is statically linked and " +
-                "symbol-stripped); see issues.md#bpmd-singlefile-live-lldb");
+                "symbol-stripped)");
         }
     }
 

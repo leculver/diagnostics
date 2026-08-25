@@ -26,7 +26,6 @@ public sealed record TestConfig : IXunitSerializable
     private CoreVersion _coreVersion;
     private Dac _dac;
     private DumpKind _dumpKind;
-    private bool _publicSymbols;
 
     /// <summary>The debuggee target name (e.g. <see cref="TargetCatalog.Scenarios"/>).</summary>
     public string Target { get => _target; init => _target = value; }
@@ -52,19 +51,13 @@ public sealed record TestConfig : IXunitSerializable
     /// <summary>The dump kind (Heap / Mini). Always <see cref="DumpKind.Heap"/> for live targets (no dump).</summary>
     public DumpKind DumpKind { get => _dumpKind; init => _dumpKind = value; }
 
-    /// <summary>
-    /// Opt the (cdb) dump host into the sealed public-msdl symbol path for OS-symbol-dependent commands
-    /// (e.g. <c>!maddress</c>). Dump-only; never set for live targets.
-    /// </summary>
-    public bool PublicSymbols { get => _publicSymbols; init => _publicSymbols = value; }
-
     /// <summary>Parameterless ctor required by <see cref="IXunitSerializable"/>; do not use directly.</summary>
     public TestConfig()
     {
     }
 
     public TestConfig(string target, Host host, Flavor flavor, Liveness liveness,
-                      GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Heap, bool publicSymbols = false,
+                      GcType gcType = GcType.Workstation, DumpKind dumpKind = DumpKind.Heap,
                       CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
     {
         Target = target;
@@ -73,7 +66,6 @@ public sealed record TestConfig : IXunitSerializable
         Liveness = liveness;
         GcType = gcType;
         DumpKind = dumpKind;
-        PublicSymbols = publicSymbols;
         CoreVersion = coreVersion;
         Dac = dac;
     }
@@ -99,8 +91,8 @@ public sealed record TestConfig : IXunitSerializable
     /// <c>SOSHARNESS_ONLY_HOSTS</c>, <c>_FLAVORS</c>, <c>_LIVENESS</c>, <c>_GCTYPE</c>, <c>_DUMPKIND</c>,
     /// <c>_COREVERSIONS</c> (e.g. <c>Net10,Net11</c>), <c>_DAC</c> (e.g. <c>Legacy</c>).</para>
     ///
-    /// <para>The legacy Core versions (net8/net9, EOL in November) are excluded from the default matrix; set
-    /// <c>SOSHARNESS_TEST_LEGACY_CORE=1</c> to include them, or name them explicitly in
+    /// <para>Out-of-support Core versions are excluded from the default matrix; set
+    /// <c>SOSHARNESS_TEST_OUT_OF_SUPPORT_CORE=1</c> to include them, or name them explicitly in
     /// <c>SOSHARNESS_ONLY_COREVERSIONS</c> (which bypasses the exclusion).</para></summary>
     public static TheoryData<TestConfig> BuildMatrix(
         string[] targets,
@@ -109,12 +101,11 @@ public sealed record TestConfig : IXunitSerializable
         Liveness liveness = Liveness.Dump,
         GcType gcType = GcType.Workstation,
         DumpKind dumpKind = DumpKind.Heap,
-        bool publicSymbols = false,
         CoreVersion coreVersion = CoreVersion.All,
         Dac dac = Dac.All)
     {
         TheoryData<TestConfig> data = new();
-        foreach (TestConfig cfg in Permutations(targets, flavor, host, liveness, gcType, dumpKind, publicSymbols, coreVersion, dac))
+        foreach (TestConfig cfg in Permutations(targets, flavor, host, liveness, gcType, dumpKind, coreVersion, dac))
         {
             data.Add(cfg);
         }
@@ -134,7 +125,6 @@ public sealed record TestConfig : IXunitSerializable
         Liveness liveness = Liveness.Dump,
         GcType gcType = GcType.Workstation,
         DumpKind dumpKind = DumpKind.Heap,
-        bool publicSymbols = false,
         CoreVersion coreVersion = CoreVersion.All,
         Dac dac = Dac.All)
     {
@@ -144,14 +134,12 @@ public sealed record TestConfig : IXunitSerializable
         // available set is silently dropped (the axis disables, it never positively enables — see CoreVersion).
         CoreVersion requestedVersions = coreVersion & CoreVersions.Available;
 
-        // Net8/Net9 reach end of support in November, so they're out of the DEFAULT matrix — a normal run
-        // only exercises the in-support versions (net10/net11). They still run when opted in via
-        // SOSHARNESS_TEST_LEGACY_CORE=1, or when explicitly named in SOSHARNESS_ONLY_COREVERSIONS (an
-        // explicit request wins — the ONLY-list below is authoritative, so don't pre-trim in that case).
+        // Exclude out-of-support versions from the default matrix. They still run when opted in or when
+        // explicitly named in SOSHARNESS_ONLY_COREVERSIONS (the explicit allow-list is authoritative).
         bool explicitVersions = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SOSHARNESS_ONLY_COREVERSIONS"));
-        if (!CoreVersions.TestLegacyCore && !explicitVersions)
+        if (!CoreVersions.TestOutOfSupportCore && !explicitVersions)
         {
-            requestedVersions &= ~CoreVersions.Legacy;
+            requestedVersions &= ~CoreVersions.OutOfSupport;
         }
 
         foreach (string target in targets)
@@ -170,11 +158,9 @@ public sealed record TestConfig : IXunitSerializable
                                 {
                                     foreach (Dac da in SingleFlags(dac, "SOSHARNESS_ONLY_DAC"))
                                     {
-                                        // A live target has no dump, so DumpKind and PublicSymbols don't
-                                        // apply. Collapse them to canonical values so we emit one live row,
-                                        // not one per (DumpKind) permutation.
+                                        // A live target has no dump kind. Collapse it to the canonical
+                                        // value so we emit one live row, not one per dump-kind permutation.
                                         DumpKind dk = l == Liveness.Live ? DumpKind.Heap : d;
-                                        bool pub = l == Liveness.Live ? false : publicSymbols;
 
                                         // Desktop .NET Framework has no .NET Core version — the axis is inert
                                         // there. Collapse it to CoreVersion.None so every Framework row folds
@@ -182,7 +168,7 @@ public sealed record TestConfig : IXunitSerializable
                                         // identical desktop-Framework config per Core version.
                                         CoreVersion cvEffective = f == Flavor.Framework ? CoreVersion.None : cv;
 
-                                        TestConfig cfg = new(target, h, f, l, g, dk, pub, cvEffective, da);
+                                        TestConfig cfg = new(target, h, f, l, g, dk, cvEffective, da);
                                         if (IsValid(cfg) && seen.Add(cfg))
                                         {
                                             yield return cfg;
@@ -230,8 +216,7 @@ public sealed record TestConfig : IXunitSerializable
         // statically linked into the symbol-stripped app image, so lldb has no symbol on which to set the
         // JIT/prestub notification breakpoint (.NET Core keeps CoreCLR as a distinct libcoreclr.so, so it
         // works there). Prune the (lldb, single-file, live) row for targets navigated via a managed stop
-        // point; crash targets, which just run to the fault, keep their live single-file coverage. See
-        // issues.md#bpmd-singlefile-live-lldb.
+        // point; crash targets, which just run to the fault, keep their live single-file coverage.
         if (c.IsLive && c.Host == Host.Lldb && c.Flavor == Flavor.SingleFile && TargetCatalog.NavigatesViaBpmd(c.Target))
         {
             return false;
@@ -260,12 +245,6 @@ public sealed record TestConfig : IXunitSerializable
         // Runtime createdump only supports full dumps for single-file apps when it needs the DAC to
         // enumerate reduced-dump regions. Don't generate Mini rows for single-file targets.
         if (c.DumpKind == DumpKind.Mini && c.Flavor == Flavor.SingleFile)
-        {
-            return false;
-        }
-
-        // Public OS symbols only make sense for a (cdb) dump host.
-        if (c.PublicSymbols && c.IsLive)
         {
             return false;
         }
@@ -341,7 +320,6 @@ public sealed record TestConfig : IXunitSerializable
         info.AddValue(nameof(Liveness), Liveness, typeof(Liveness));
         info.AddValue(nameof(GcType), GcType, typeof(GcType));
         info.AddValue(nameof(DumpKind), DumpKind, typeof(DumpKind));
-        info.AddValue(nameof(PublicSymbols), PublicSymbols, typeof(bool));
         info.AddValue(nameof(CoreVersion), CoreVersion, typeof(CoreVersion));
         info.AddValue(nameof(Dac), Dac, typeof(Dac));
     }
@@ -354,7 +332,6 @@ public sealed record TestConfig : IXunitSerializable
         _liveness = info.GetValue<Liveness>(nameof(Liveness));
         _gcType = info.GetValue<GcType>(nameof(GcType));
         _dumpKind = info.GetValue<DumpKind>(nameof(DumpKind));
-        _publicSymbols = info.GetValue<bool>(nameof(PublicSymbols));
         _coreVersion = info.GetValue<CoreVersion>(nameof(CoreVersion));
         _dac = info.GetValue<Dac>(nameof(Dac));
     }
@@ -362,17 +339,15 @@ public sealed record TestConfig : IXunitSerializable
     /// <summary>
     /// A legible, deterministic id used for the theory display name and de-duplication, e.g.
     /// <c>scenarios/Cdb/Core/net10/Dump/Workstation/Heap</c> (the runtime version is always shown; the dump
-    /// kind is omitted for live rows; a <c>/cdac</c> suffix marks the cDAC variant and <c>/pub</c> the
-    /// public-symbol variant). Legacy DAC is the implicit default and isn't tokenized, so single-DAC ids
-    /// stay terse.
+    /// kind is omitted for live rows; a <c>/cdac</c> suffix marks the cDAC variant. Legacy DAC is the
+    /// implicit default and isn't tokenized, so single-DAC ids stay terse.
     /// </summary>
     public override string ToString()
     {
         string version = CoreVersion == CoreVersion.None ? "/netfx" : "/net" + CoreVersions.Major(CoreVersion);
         string dump = IsLive ? string.Empty : "/" + DumpKind;
         string dac = Dac == Dac.CDac ? "/cdac" : string.Empty;
-        string pub = PublicSymbols ? "/pub" : string.Empty;
-        return $"{Target}/{Host}/{Flavor}{version}/{Liveness}/{GcType}{dump}{dac}{pub}";
+        return $"{Target}/{Host}/{Flavor}{version}/{Liveness}/{GcType}{dump}{dac}";
     }
 
 }

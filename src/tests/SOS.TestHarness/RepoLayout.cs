@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace SOS.TestHarness;
@@ -14,10 +15,22 @@ namespace SOS.TestHarness;
 /// </summary>
 public static class RepoLayout
 {
-    /// <summary>The build configuration of the repo-built tools (native SOS, dotnet-dump). Defaults
-    /// to <c>Debug</c>; set <c>SOSHARNESS_ARTIFACTS_CONFIG=Release</c> to consume Release artifacts.</summary>
+    /// <summary>The build configuration of the repo-built tools (native SOS, dotnet-dump). This is embedded
+    /// by MSBuild in the harness assembly; <c>SOSHARNESS_ARTIFACTS_CONFIG</c> is available as a local override.</summary>
     public static string ArtifactsConfiguration { get; } =
-        Environment.GetEnvironmentVariable("SOSHARNESS_ARTIFACTS_CONFIG") is { Length: > 0 } c ? c : "Debug";
+        Environment.GetEnvironmentVariable("SOSHARNESS_ARTIFACTS_CONFIG") is { Length: > 0 } c
+            ? c
+            : typeof(RepoLayout).Assembly
+                .GetCustomAttributes<AssemblyMetadataAttribute>()
+                .Single(a => a.Key == "SOS.TestHarness.Configuration")
+                .Value!;
+
+    /// <summary>The target framework of the running harness, such as <c>net10.0</c>.</summary>
+    public static string TestTargetFramework { get; } =
+        typeof(RepoLayout).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Single(a => a.Key == "SOS.TestHarness.TargetFramework")
+            .Value!;
 
     /// <summary>The repo root (the directory containing <c>global.json</c> and <c>Build.cmd</c>).</summary>
     public static string Root { get; } = FindRoot();
@@ -92,17 +105,6 @@ public static class RepoLayout
     /// module, so managed source/line resolution still works.
     /// </summary>
     public static string SymbolCache { get; } = Path.Combine(Scratch, "symcache");
-
-    /// <summary>
-    /// A still-sealed, fully harness-constructed symbol path that adds the PUBLIC <c>msdl</c> symbol
-    /// server on top of the local cache — for the handful of tests that need OS symbols (e.g.
-    /// <c>ntdll.pdb</c> for the <c>!address</c>/<c>!maddress</c> family). Like <see cref="SymbolCache"/>
-    /// it never inherits the dev's ambient <c>_NT_SYMBOL_PATH</c>; it is exactly the local cache followed
-    /// by a downstream <c>msdl</c> store (anonymous/public — never <c>symweb</c>, never arbitrary paths),
-    /// so it stays predictable. Works on any box with outbound HTTPS; CI (no egress) skips these tests.
-    /// </summary>
-    public static string PublicSymbolCache { get; } =
-        SymbolCache + ";srv*" + SymbolCache + "*https://msdl.microsoft.com/download/symbols";
 
     private static string FindRoot()
     {

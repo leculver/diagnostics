@@ -10,7 +10,7 @@ public enum Host
     /// <summary>In-process dbgeng, run in a child EngineHost (Windows).</summary>
     Cdb = 1,
 
-    /// <summary>Native debugger (Linux/macOS) — not implemented in this PoC.</summary>
+    /// <summary>LLDB debugger host (Linux/macOS).</summary>
     Lldb = 2,
 
     /// <summary>Managed <c>dotnet-dump analyze</c> host (all OSes).</summary>

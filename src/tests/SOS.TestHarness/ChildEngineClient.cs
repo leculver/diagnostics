@@ -26,7 +26,7 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
 
     public string Name { get; }
 
-    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir, bool publicSymbols, Dac dac, Flavor flavor)
+    private ChildEngineClient(string name, string mode, IReadOnlyList<string> modeArgs, string? dacDir, Dac dac, Flavor flavor)
     {
         Name = name;
 
@@ -48,11 +48,9 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
 
         // _NT_SYMBOL_PATH is ALWAYS fully replaced with a harness-constructed value - never inherited
         // (the dev's ambient _NT_SYMBOL_PATH may point at the Azure-authed symweb, which crashes SOS host
-        // init and makes tests network-dependent). Default is the hermetic local cache only; the sealed
-        // public-symbols carveout adds ONLY the public msdl server (for OS-symbol-dependent commands like
-        // !maddress) and is still fully harness-constructed.
+        // init and makes tests network-dependent).
         Directory.CreateDirectory(RepoLayout.SymbolCache);
-        string symbolPath = publicSymbols ? RepoLayout.PublicSymbolCache : RepoLayout.SymbolCache;
+        string symbolPath = RepoLayout.SymbolCache;
 
         // For self-contained single-file the runtime (coreclr.dll) and the DAC (mscordaccore.dll) are
         // bundled in the exe, so dbgeng can't find them on disk. Point it at the runtime pack that has
@@ -100,12 +98,12 @@ public sealed class ChildEngineClient : ILiveDebuggerHost
     }
 
     /// <summary>A child engine over a crash/snapshot dump.</summary>
-    public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null, bool publicSymbols = false, Dac dac = Dac.Legacy) =>
-        new(hostName, "dump", new[] { dumpPath }, dacDir, publicSymbols, dac, Flavor.Core);
+    public static ChildEngineClient ForDump(string hostName, string dumpPath, string? dacDir = null, Dac dac = Dac.Legacy) =>
+        new(hostName, "dump", new[] { dumpPath }, dacDir, dac, Flavor.Core);
 
     /// <summary>A live child engine that launches the target (parked at the loader break, SOS loaded).</summary>
     public static ChildEngineClient ForLive(string hostName, string exePath, string? dacDir = null, Dac dac = Dac.Legacy, Flavor flavor = Flavor.Core) =>
-        new(hostName, "live", new[] { exePath }, dacDir, publicSymbols: false, dac, flavor);
+        new(hostName, "live", new[] { exePath }, dacDir, dac, flavor);
 
     public void LoadSos()
     {

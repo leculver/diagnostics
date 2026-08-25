@@ -40,7 +40,7 @@ public sealed class MiscCommandTests
 
         // enummem (EnumMemoryRegions) is E_NOTIMPL under the cDAC on the dotnet-dump host — by design, the
         // cDAC doesn't implement the memory-region enumeration contract, surfaced as "Unrecognized SOS
-        // command" (see issues.md#cdac-enummem-notimpl). The native (cdb) host services enummem itself, so
+        // command". The native (cdb) host services enummem itself, so
         // it's only unavailable on dotnet-dump. Return early rather than skipping — sosflush above has
         // already been verified on this config. cDAC only exists on net11+, so no version check is needed.
         if (config.Dac == Dac.CDac && config.Host == Host.DotnetDump)

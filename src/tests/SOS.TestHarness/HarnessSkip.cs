@@ -13,8 +13,7 @@ namespace SOS.TestHarness;
 /// <paramref name="reason"/>.
 ///
 /// Use this only for limitations that are intrinsic to a (host, flavor, liveness) combination and apply
-/// uniformly to every test exercising it — i.e. there is no per-test variation to express. Per-test
-/// known-issue decisions still belong in <c>KnownIssues</c> on the test side.
+/// uniformly to every test exercising it — i.e. there is no per-test variation to express.
 /// </summary>
 public sealed class HarnessSkipException : Exception
 {

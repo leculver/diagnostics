@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$(NetCoreAppTestTargetFramework)</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -27,13 +27,18 @@
     <!-- xUnit v3 core (library variant, no executable enforcement) so the harness can expose
          TheoryData-based matrices for the test project to consume. Version from the Arcade default. -->
     <PackageReference Include="xunit.v3.extensibility.core" Version="$(XUnitV3Version)" />
+    <PackageDownload Include="cdb-sos" Version="[$(cdbsosversion)]" Condition="'$(OS)' == 'Windows_NT'" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <!-- Full DbgEng payload (dbgeng.dll + winext extension gallery) the cdb hosts load at runtime via
-         ToolPaths.DbgEngDirectory. Supplies the !address-class gallery commands the stripped cdb-sos
-         engine lacks. PackageDownload (not a compile reference): we only need it restored on disk. -->
-    <PackageDownload Include="Microsoft.Debugging.DbgEng.Core" Version="[$(MicrosoftDebuggingDbgEngCoreVersion)]" />
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>SOS.TestHarness.Configuration</_Parameter1>
+      <_Parameter2>$(Configuration)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>SOS.TestHarness.TargetFramework</_Parameter1>
+      <_Parameter2>$(TargetFramework)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

@@ -29,7 +29,6 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     private readonly bool _pooled;       // dotnet-dump: route through the single slot
     private readonly HostSlot? _slot;
     private readonly object _gate = new(); // serializes concurrent commands on this shared child
-    private readonly bool _publicSymbols;  // cdb: use the sealed public-msdl symbol path (OS-symbol tests)
     private IDebuggerHost? _host;        // kept-alive host for non-pooled (cdb child) targets
 
     // One diagnostics collector for the life of this session (survives the pooled dotnet-dump host being
@@ -48,7 +47,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
     /// host (which does not support capture). Surfaced in a failing test's replay.</summary>
     public HostDiagnostics? Diagnostics => _diagnostics;
 
-    internal DumpSession(Host hostKind, string targetName, string stopName, Flavor flavor, string dumpPath, bool publicSymbols = false,
+    internal DumpSession(Host hostKind, string targetName, string stopName, Flavor flavor, string dumpPath,
                          CoreVersion coreVersion = CoreVersion.Net10, Dac dac = Dac.Legacy)
     {
         _hostKind = hostKind;
@@ -57,7 +56,6 @@ internal sealed class DumpSession : IPooledHost, IDisposable
         StopName = stopName;
         Flavor = flavor;
         DumpPath = dumpPath;
-        _publicSymbols = publicSymbols;
         CoreVersion = coreVersion;
         Dac = dac;
 
@@ -72,7 +70,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
         if (!_pooled)
         {
-            _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath, _publicSymbols, dac, coreVersion,
+            _host = HostFactory.CreateDumpHost(hostKind, flavor, dumpPath, dac, coreVersion,
                 SnapshotStore.TargetExe(flavor, targetName, coreVersion), _diagnostics);
             _host.LoadSos();
         }
@@ -129,7 +127,7 @@ internal sealed class DumpSession : IPooledHost, IDisposable
 
     void IPooledHost.OpenHost()
     {
-        _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath, _publicSymbols, Dac, CoreVersion,
+        _host = HostFactory.CreateDumpHost(_hostKind, Flavor, DumpPath, Dac, CoreVersion,
             SnapshotStore.TargetExe(Flavor, TargetName, CoreVersion), _diagnostics);
         _host.LoadSos();
     }

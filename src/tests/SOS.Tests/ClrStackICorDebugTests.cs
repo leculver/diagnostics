@@ -14,8 +14,8 @@ namespace SOS.Tests;
 /// SOS-native oracle).
 ///
 /// <para>Self-contained single-file is excluded from the matrix: ICorDebug/DBI cannot decode a single-file
-/// image's locals (they come back as unnamed <c>IsError</c> slots), and single-file ICorDebug locals aren't
-/// a scenario we need to support. See issues.md#icordebug-singlefile-locals for the bedrock finding.</para>
+/// image's locals (they come back as unnamed <c>IsError</c> slots), and this test specifically validates
+/// decoded local names and values.</para>
 /// </summary>
 public sealed class ClrStackICorDebugTests
 {

@@ -4,9 +4,8 @@
 namespace SOS.TestHarness;
 
 /// <summary>
-/// One debugger host that SOS can run inside. The whole point of the PoC is that
-/// a test author programs against this single surface and never cares whether the
-/// backend is in-process dbgeng (the "cdb" engine) or a child dotnet-dump process.
+/// One debugger host that SOS can run inside. A test author programs against this
+/// surface without depending on whether the backend is dbgeng, LLDB, or dotnet-dump.
 ///
 /// A host owns exactly one loaded target and is single-threaded with respect to
 /// command execution — mirroring the real-world constraint that a dbgeng instance

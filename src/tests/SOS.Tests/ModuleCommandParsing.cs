@@ -166,8 +166,8 @@ public sealed class DumpDomainResult
                 continue;
             }
 
-            // The full DbgEng.Core engine interleaves dbgeng symbol-warning banners onto the NORMAL
-            // output channel while resolving the single-file primary module's name - a "*** WARNING:
+            // DbgEng can interleave symbol-warning banners onto the NORMAL output channel while resolving
+            // the single-file primary module's name - a "*** WARNING:
             // Unable to verify checksum ..." line and, without OS symbols, an "ntdll!PEB ... ***" /
             // "*** ... ***" unqualified-symbol box. These split the module's address from its name. The
             // stripped cdb-sos engine didn't emit them. Drop the banner lines (they start with '*' or, for

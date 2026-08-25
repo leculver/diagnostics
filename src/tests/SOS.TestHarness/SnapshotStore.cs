@@ -99,10 +99,9 @@ public static class SnapshotStore
             return dumpDir;
         }
 
-        // About to capture a fresh dump. On Windows a reduced Core dump depends on a machine registry
-        // setting to load the unsigned test DAC (see DumpGenerationRequirements); fail loudly with the fix
-        // if it's missing rather than silently producing a dump without the CLR loader heaps.
-        DumpGenerationRequirements.EnsureAvailableFor(flavor, dumpKind);
+        // On Windows, a reduced Core dump of an unsigned runtime needs a machine-wide dbghelp setting.
+        // Use a Full dump when that setting is absent so normal test runs remain self-contained.
+        DumpKind captureKind = DumpGenerationRequirements.ResolveCaptureKind(flavor, dumpKind);
 
         bool isCrash = target.StopPoints.Any(s => s.Kind == StopKind.Crash);
 
@@ -110,24 +109,24 @@ public static class SnapshotStore
         {
             // Desktop: no diagnostics IPC; dbgeng captures both snapshot (bpmd) and crash (second-chance).
             // Run it out-of-process so a dbgeng crash dies with the child, not the test host.
-            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType, dumpKind);
+            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType, captureKind);
         }
         else if (isCrash && flavor == Flavor.SingleFile && OperatingSystem.IsWindows())
         {
             // Self-contained single-file on Windows doesn't ship/launch createdump, so capture its crash
             // with dbgeng like desktop (also out-of-process). On Linux/macOS the bundled runtime's
             // createdump handles single-file crashes, so we fall through to CaptureCrashViaCreatedump.
-            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType, dumpKind);
+            CaptureWithDbgEng(TargetExe(flavor, target.Name, coreVersion), target, dumpDir, gcType, captureKind);
         }
         else if (isCrash)
         {
             // .NET Core crash: let the runtime's createdump write the dump.
-            CaptureCrashViaCreatedump(flavor, target, dumpDir, gcType, dumpKind, coreVersion);
+            CaptureCrashViaCreatedump(flavor, target, dumpDir, gcType, captureKind, coreVersion);
         }
         else
         {
             // Snapshot stops on Core / SingleFile: self-snapshot mid-run via markers.
-            SelfCollectCapture(flavor, target, dumpDir, gcType, dumpKind, coreVersion);
+            SelfCollectCapture(flavor, target, dumpDir, gcType, captureKind, coreVersion);
         }
 
         return dumpDir;
@@ -463,22 +462,28 @@ public static class SnapshotStore
         File.Exists(output) && File.GetLastWriteTimeUtc(output) >= inputUtc;
 
     /// <summary>
-    /// Build (incrementally) and locate a subprocess host (EngineHost / Capturer). These reference the
-    /// harness, so we always run an incremental <c>dotnet build</c> (a no-op when nothing changed) to
-    /// guarantee the child never runs a stale copy of the harness; output lands at the conventional
-    /// <c>artifacts/bin/&lt;Name&gt;/&lt;Config&gt;/net10.0/&lt;rid&gt;/&lt;Name&gt;.dll</c> path.
+    /// Locate a subprocess host (EngineHost / Capturer), building it on demand for local development when
+    /// the normal repository build has not produced it.
     /// </summary>
     private static string SubprocessDll(string name)
     {
-        string dll = Path.Combine(RepoLayout.ArtifactsBin, name, RepoLayout.ArtifactsConfiguration, "net10.0", RepoLayout.Rid, name + ".dll");
+        string dll = Path.Combine(RepoLayout.ArtifactsBin, name, RepoLayout.ArtifactsConfiguration, RepoLayout.TestTargetFramework, RepoLayout.Rid, name + ".dll");
         string project = Path.Combine(RepoLayout.Root, "src", "tests", name, name + ".csproj");
 
-        // Both helper projects reference SOS.TestHarness and can be initialized concurrently by
-        // different test rows. Serialize their one-time incremental builds so their MSBuild nodes
-        // do not write the shared harness intermediate assembly at the same time.
-        lock (s_subprocessBuildLock)
+        if (!File.Exists(dll))
         {
-            RunToCompletion(RepoLayout.DotNetExe, $"build \"{project}\" -c {RepoLayout.ArtifactsConfiguration}");
+            // Both helper projects reference SOS.TestHarness and can be initialized concurrently by
+            // different test rows. Serialize their fallback builds so their MSBuild nodes do not write
+            // the shared harness intermediate assembly at the same time.
+            lock (s_subprocessBuildLock)
+            {
+                if (!File.Exists(dll))
+                {
+                    RunToCompletion(
+                        RepoLayout.DotNetExe,
+                        $"build \"{project}\" -c {RepoLayout.ArtifactsConfiguration} -p:TargetArch={RepoLayout.TargetArch}");
+                }
+            }
         }
 
         if (!File.Exists(dll))

@@ -175,7 +175,7 @@ public static class TargetCatalog
     /// Whether reaching this target's stop points requires a live <c>bpmd</c> notification breakpoint
     /// (i.e. it has a <see cref="StopKind.Snapshot"/> stop), as opposed to simply running to a crash.
     /// Snapshot navigation can't be performed live on a self-contained single-file image under the lldb
-    /// host (see issues.md#bpmd-singlefile-live-lldb), so the matrix prunes that one row for such targets.
+    /// host, so the matrix prunes that one row for such targets.
     /// Unknown tokens are treated as not requiring bpmd.
     /// </summary>
     public static bool NavigatesViaBpmd(string name) =>

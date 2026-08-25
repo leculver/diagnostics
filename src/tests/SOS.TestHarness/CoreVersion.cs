@@ -44,8 +44,8 @@ public enum CoreVersion : uint
     /// <summary>
     /// Every version. Intersected with <see cref="CoreVersions.Available"/> at matrix-expansion time, so a
     /// test left at the default runs against exactly the versions the harness builds and installs — minus the
-    /// legacy set (<see cref="CoreVersions.Legacy"/>: net8/net9, EOL in November), which is excluded from the
-    /// default matrix unless opted into via <see cref="CoreVersions.TestLegacyCore"/> or named explicitly in
+    /// out-of-support set (<see cref="CoreVersions.OutOfSupport"/>), which is excluded from the default
+    /// matrix unless opted into via <see cref="CoreVersions.TestOutOfSupportCore"/> or named explicitly in
     /// <c>SOSHARNESS_ONLY_COREVERSIONS</c>.
     /// </summary>
     All = uint.MaxValue,
