@@ -84,7 +84,28 @@ public static class ToolPaths
     /// Native SOS resolves the universal cDAC from the SOS module directory. Keep the lldb plugin output
     /// directory aligned with the configured override before cDAC rows load SOS.
     /// </summary>
-    public static void EnsureLldbPluginCDacOverride()
+    public static void EnsureLldbPluginCDacOverride() =>
+        EnsureCDacOverride(Path.GetDirectoryName(LldbPluginPath)!);
+
+    /// <summary>
+    /// dotnet-dump resolves the universal cDAC from its publish directory. Keep that directory aligned
+    /// with the configured override before cDAC rows start the analyze host.
+    /// </summary>
+    public static void EnsureDotNetDumpCDacOverride()
+    {
+        string publishDirectory = Path.GetDirectoryName(DotNetDumpDll)!;
+        EnsureCDacOverride(publishDirectory);
+
+        // The published host loads native SOS from its RID subdirectory. Native SOS resolves cDAC
+        // relative to its own module, so update that copy as well as the publish-root runtime asset.
+        string nativeDirectory = Path.Combine(publishDirectory, RepoLayout.Rid);
+        if (Directory.Exists(nativeDirectory))
+        {
+            EnsureCDacOverride(nativeDirectory);
+        }
+    }
+
+    private static void EnsureCDacOverride(string destinationDirectory)
     {
         string? overrideDirectory = CDacOverrideDirectory;
         if (overrideDirectory is null)
@@ -93,7 +114,7 @@ public static class ToolPaths
         }
 
         string source = Path.Combine(overrideDirectory, CDacFileName);
-        string destination = Path.Combine(Path.GetDirectoryName(LldbPluginPath)!, CDacFileName);
+        string destination = Path.Combine(destinationDirectory, CDacFileName);
         lock (s_cdacCopyLock)
         {
             if (!File.Exists(destination) || !FilesEqual(source, destination))

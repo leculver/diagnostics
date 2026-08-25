@@ -42,6 +42,12 @@ public sealed class DotNetDumpHost : IDebuggerHost, IDiagnosticHost
         _dac = dac;
         _coreVersion = coreVersion;
         _diagnostics = diagnostics;
+
+        if (_dac == Dac.CDac)
+        {
+            ToolPaths.EnsureDotNetDumpCDacOverride();
+        }
+
         ProcessStartInfo psi = new()
         {
             RedirectStandardInput = true,
@@ -107,8 +113,7 @@ public sealed class DotNetDumpHost : IDebuggerHost, IDiagnosticHost
         // native directory (a *local directory*, no network) so it resolves the DAC for the dump's
         // coreclr build locally and the session stays hermetic. Mirrors LldbCliHost. Other flavors find
         // their DAC next to the on-disk runtime and need no override.
-        string? dacDir = _dac == Dac.CDac ? ToolPaths.CDacOverrideDirectory : null;
-        dacDir ??= _flavor == Flavor.SingleFile ? ToolPaths.SingleFileDacDirectory(_coreVersion) : null;
+        string? dacDir = _flavor == Flavor.SingleFile ? ToolPaths.SingleFileDacDirectory(_coreVersion) : null;
         if (dacDir is { Length: > 0 })
         {
             Run($"setsymbolserver -directory \"{dacDir}\"");
