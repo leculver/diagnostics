@@ -71,7 +71,7 @@ public static class DbgEngCapturer
                 }
                 else // Crash
                 {
-                    RunToBreak(control, "second-chance crash");
+                    RunToCrashException(control);
                 }
 
                 Run($".dump /o {DbgEngDumpOption(dumpKind)} \"{dumpPath}\"");
@@ -123,5 +123,32 @@ public static class DbgEngCapturer
         }
 
         throw new InvalidOperationException($"Did not reach {what} after {MaxResumes} resumes.");
+    }
+
+    private static void RunToCrashException(IDebugControl control)
+    {
+        const int MaxResumes = 40;
+        const uint StatusBreakpoint = 0x80000003;
+
+        for (int i = 0; i < MaxResumes; i++)
+        {
+            control.Execute(DEBUG_OUTCTL.THIS_CLIENT, "g", DEBUG_EXECUTE.DEFAULT);
+            control.WaitForEvent(TimeSpan.FromSeconds(60));
+            control.GetExecutionStatus(out DEBUG_STATUS status);
+
+            if (status == DEBUG_STATUS.NO_DEBUGGEE)
+            {
+                throw new InvalidOperationException("Debuggee exited before reaching crash exception.");
+            }
+
+            if (status == DEBUG_STATUS.BREAK &&
+                control.GetLastEvent(out DEBUG_LAST_EVENT_INFO_EXCEPTION ex, out _, out _) &&
+                ex.ExceptionRecord.ExceptionCode != StatusBreakpoint)
+            {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException($"Did not reach crash exception after {MaxResumes} resumes.");
     }
 }
